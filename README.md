@@ -24,7 +24,7 @@
 
 ## 下载及安装 | Download and Installation
 
-模组大概是兼容所有KSP版本的（我没做过测试我不知道），无需前置模组。
+模组大概是兼容所有KSP版本的（我没做过测试我不知道），需要安装Realfuels（这不是废话吗）。
 
 下载发行文件，并像常规模组那样安装即可，安装路径应为`X:\...\Kerbal Space Program\GameData\EngineAnalyzer`，X 为你的安装分区。
 
