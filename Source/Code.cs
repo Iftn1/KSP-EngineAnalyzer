@@ -14,7 +14,7 @@ namespace KSP_EngineAnalyzer
         private bool isVisible = false;
 
         private float lockedPayloadMass = 0f;
-        private float currentStageDryMass = 1.0f;
+        private float vesselMassAtSync = 0f;
         private float targetVolumeKL = 4.5f;
         private string targetVolumeInput = "4.50";
         private int engineCount = 1;
@@ -31,6 +31,7 @@ namespace KSP_EngineAnalyzer
         private bool showJets = true;
         private bool showSRB = true;
         private bool sortByValue = false;
+        private bool showStageHistory = false;
 
         private bool isSmartMode = false;
         private bool isVacMode = true;
@@ -39,12 +40,17 @@ namespace KSP_EngineAnalyzer
         private string targetTWRInput = "1.2";
         private float targetTWR = 1.2f;
 
+        private bool isEnglish = false;
+        private string lockID = "EngineAnalyzerLock";
+
         private List<float> lockedWetMasses = new List<float>();
         private List<float> lockedDryMasses = new List<float>();
         private List<float> lockedVolumes = new List<float>();
 
-        private List<EngineEntry> allEnginesCache = new List<EngineEntry>();
-        private List<EngineEntry> filteredResults = new List<EngineEntry>();
+        private List<EnginePartGroup> allGroupsCache = new List<EnginePartGroup>();
+        private List<EnginePartGroup> filteredGroups = new List<EnginePartGroup>();
+
+        private string L(string zh, string en) => isEnglish ? en : zh;
 
         private void Update()
         {
@@ -52,6 +58,34 @@ namespace KSP_EngineAnalyzer
             {
                 isVisible = !isVisible;
                 if (isVisible) { CheckShipReset(); SyncCurrentStage(); RefreshData(); }
+                else { InputLockManager.RemoveControlLock(lockID); }
+            }
+        }
+
+        private void OnDestroy()
+        {
+            InputLockManager.RemoveControlLock(lockID);
+        }
+
+        private void SpawnAndConfigure(AvailablePart ap, string configName)
+        {
+            EditorLogic.fetch.SpawnPart(ap);
+            Part p = EditorLogic.SelectedPart;
+            if (p == null || configName == "标准型号" || configName == "Standard") return;
+
+            foreach (PartModule pm in p.Modules)
+            {
+                if (pm.moduleName == "ModuleEngineConfigs" || pm.moduleName == "ModuleEnginesRF" || pm.moduleName == "ModuleRealEngine")
+                {
+                    var method = pm.GetType().GetMethod("SetConfiguration", new Type[] { typeof(string) });
+                    if (method != null) { method.Invoke(pm, new object[] { configName }); }
+                    else
+                    {
+                        var field = pm.Fields.Cast<BaseField>().FirstOrDefault(f => f.name == "configuration");
+                        if (field != null) field.SetValue(configName, pm);
+                    }
+                    break;
+                }
             }
         }
 
@@ -61,6 +95,7 @@ namespace KSP_EngineAnalyzer
             if (currentParts == 0 && lastPartCount > 0)
             {
                 lockedPayloadMass = 0f;
+                vesselMassAtSync = 0f;
                 lockedWetMasses.Clear();
                 lockedDryMasses.Clear();
                 lockedVolumes.Clear();
@@ -68,24 +103,8 @@ namespace KSP_EngineAnalyzer
             lastPartCount = currentParts;
         }
 
-        private float GetShipDryMass()
-        {
-            if (EditorLogic.fetch?.ship == null) return 0f;
-            float total = 0f;
-            foreach (Part p in EditorLogic.fetch.ship.Parts) total += p.mass;
-            return total;
-        }
-
-        private float GetShipTotalMass()
-        {
-            if (EditorLogic.fetch?.ship == null) return 0f;
-            float total = 0f;
-            foreach (Part p in EditorLogic.fetch.ship.Parts)
-            {
-                total += p.mass + p.GetResourceMass();
-            }
-            return total;
-        }
+        private float GetShipDryMass() => EditorLogic.fetch?.ship?.Parts.Sum(p => p.mass) ?? 0f;
+        private float GetShipTotalMass() => EditorLogic.fetch?.ship?.Parts.Sum(p => p.mass + p.GetResourceMass()) ?? 0f;
 
         private float GetShipTotalVolumeKL()
         {
@@ -109,14 +128,10 @@ namespace KSP_EngineAnalyzer
         private void SyncCurrentStage()
         {
             float totalWet = GetShipTotalMass();
-            float totalDry = GetShipDryMass();
             float totalVol = GetShipTotalVolumeKL();
-
+            vesselMassAtSync = totalWet;
             float prevWet = lockedWetMasses.Count > 0 ? lockedWetMasses.Max() : 0f;
-            float prevDry = lockedDryMasses.Count > 0 ? lockedDryMasses.Max() : 0f;
             float prevVol = lockedVolumes.Count > 0 ? lockedVolumes.Max() : 0f;
-
-            currentStageDryMass = Math.Max(totalDry - prevDry, 0.001f);
             targetVolumeKL = Math.Max(totalVol - prevVol, 0f);
             targetVolumeInput = targetVolumeKL.ToString("F2");
             lockedPayloadMass = prevWet;
@@ -124,7 +139,7 @@ namespace KSP_EngineAnalyzer
 
         private void RefreshData()
         {
-            allEnginesCache.Clear();
+            allGroupsCache.Clear();
             foreach (AvailablePart ap in PartLoader.LoadedPartsList)
             {
                 var engineMod = ap.partPrefab?.FindModuleImplementing<ModuleEngines>();
@@ -133,131 +148,137 @@ namespace KSP_EngineAnalyzer
                 bool isJet = engineMod.propellants.Any(p => p.name == "IntakeAir");
                 bool isSRB = engineMod.throttleLocked || engineMod.propellants.Any(p => p.name == "SolidFuel");
 
-                float mixDensity = 0.005f;
-                List<string> fuels = new List<string>();
+                float baseMixDensity = 0.005f;
+                List<string> baseFuels = new List<string>();
                 float totalRatio = engineMod.propellants.Sum(p => p.ratio);
                 if (totalRatio > 0)
                 {
-                    mixDensity = 0f;
+                    baseMixDensity = 0f;
                     foreach (var p in engineMod.propellants)
                     {
                         var def = PartResourceLibrary.Instance.GetDefinition(p.name);
-                        mixDensity += (p.ratio / totalRatio) * (def?.density ?? 0.005f);
-                        fuels.Add(def?.displayName ?? p.name);
+                        baseMixDensity += (p.ratio / totalRatio) * (def?.density ?? 0.005f);
+                        baseFuels.Add(isEnglish ? (def?.name ?? p.name) : (def?.displayName ?? p.name));
                     }
                 }
 
-                float ispVac = engineMod.atmosphereCurve.Evaluate(0f);
-                float ispASL = engineMod.atmosphereCurve.Evaluate(1f);
-                float activeIsp = isVacMode ? ispVac : ispASL;
-                float activeThrust = (isVacMode ? engineMod.maxThrust : engineMod.maxThrust * (ispASL / Math.Max(1f, ispVac))) * engineCount;
-                float totalDryMass = lockedPayloadMass + currentStageDryMass + (ap.partPrefab.mass * engineCount);
+                float baseIspVac = engineMod.atmosphereCurve.Evaluate(0f);
+                float baseIspASL = engineMod.atmosphereCurve.Evaluate(1f);
+                float baseMaxThrust = engineMod.maxThrust;
 
-                string burnTime = "无限", ignitions = "无限次点火", ullage = "<color=lime>免沉底</color>";
+                string baseBurnTime = L("无限", "Inf"), baseIgnitions = L("无限次点火", "Inf Ignitions"), baseUllage = L("<color=lime>免沉底</color>", "<color=lime>No Ullage</color>");
                 foreach (PartModule pm in ap.partPrefab.Modules)
                 {
-                    string mn = pm.moduleName;
-                    if (mn.Contains("ModuleEngineConfigs") || mn.Contains("ModuleRealEngine") || mn.Contains("ModuleEnginesRF"))
+                    if (pm.moduleName.Contains("ModuleEngineConfigs") || pm.moduleName.Contains("ModuleRealEngine") || pm.moduleName.Contains("ModuleEnginesRF"))
                     {
                         var fields = pm.Fields.Cast<BaseField>().ToList();
-                        var fIgnition = fields.FirstOrDefault(f => f.name.ToLower().Contains("ignition"));
-                        var fUllage = fields.FirstOrDefault(f => f.name.ToLower().Contains("ullage"));
-                        var fBurn = fields.FirstOrDefault(f => f.name.ToLower().Contains("burn"));
-
-                        if (fIgnition != null)
-                        {
-                            string igRaw = fIgnition.GetValue(pm).ToString();
-                            if (int.TryParse(igRaw, out int igCount))
-                            {
-                                if (igCount > 0 && igCount < 100)
-                                    ignitions = igCount + " 次点火";
-                                else
-                                    ignitions = "无限次点火";
-                            }
-                            else if (igRaw.ToLower().Contains("inf")) ignitions = "无限次点火";
-                        }
-                        if (fUllage != null && fUllage.GetValue(pm).ToString().ToLower() == "true") ullage = "<color=red>需沉底</color>";
-                        if (fBurn != null && float.TryParse(fBurn.GetValue(pm).ToString(), out float bt) && bt > 0) burnTime = bt + "s";
+                        var fIgn = fields.FirstOrDefault(f => f.name.ToLower().Contains("ignition"));
+                        var fUll = fields.FirstOrDefault(f => f.name.ToLower().Contains("ullage"));
+                        var fBrn = fields.FirstOrDefault(f => f.name.ToLower().Contains("burn"));
+                        if (fIgn != null && int.TryParse(fIgn.GetValue(pm).ToString(), out int c) && c < 100) baseIgnitions = c + L(" 次点火", " Ignitions");
+                        if (fUll != null && fUll.GetValue(pm).ToString().ToLower() == "true") baseUllage = L("<color=red>需沉底</color>", "<color=red>Need Ullage</color>");
+                        if (fBrn != null && float.TryParse(fBrn.GetValue(pm).ToString(), out float bt) && bt > 0) baseBurnTime = bt + "s";
                     }
                 }
 
-                float dV = 0f, twr = 0f, calcVol = 0f, calcWet = 0f;
-                bool meetsSmart = true;
+                EnginePartGroup group = new EnginePartGroup { part = ap, partTitle = Localizer.Format(ap.title), isJet = isJet, isSRB = isSRB };
+                ConfigNode mecNode = ap.partConfig?.GetNodes("MODULE").FirstOrDefault(n => n.GetValue("name").Contains("EngineConfigs") || n.GetValue("name").Contains("RealEngine") || n.GetValue("name").Contains("EnginesRF"));
 
-                if (isSRB)
+                if (mecNode != null && mecNode.HasNode("CONFIG"))
                 {
-                    float srbFuelMass = ap.partPrefab.Resources.Where(r => r.resourceName == "SolidFuel").Sum(r => (float)(r.maxAmount * r.info.density));
-                    calcWet = totalDryMass + (srbFuelMass * engineCount);
-                    calcVol = (srbFuelMass * engineCount / mixDensity) / 1000f;
-                    if (totalDryMass > 0) dV = activeIsp * 9.80665f * Mathf.Log(calcWet / totalDryMass);
-                    twr = activeThrust / (calcWet * 9.80665f);
-                }
-                else if (isSmartMode)
-                {
-                    float R = Mathf.Exp(targetDV / (activeIsp * 9.80665f));
-                    calcWet = totalDryMass * R;
-                    calcVol = ((calcWet - totalDryMass) / mixDensity) / 1000f;
-                    twr = activeThrust / (calcWet * 9.80665f);
-                    if (twr < targetTWR) meetsSmart = false;
-                    dV = targetDV;
-                }
-                else
-                {
-                    float fuelMass = (targetVolumeKL * 1000f) * mixDensity;
-                    calcWet = totalDryMass + fuelMass;
-                    calcVol = targetVolumeKL;
-                    if (totalDryMass > 0) dV = activeIsp * 9.80665f * Mathf.Log(calcWet / totalDryMass);
-                    twr = activeThrust / (calcWet * 9.80665f);
-                }
+                    foreach (ConfigNode cfg in mecNode.GetNodes("CONFIG"))
+                    {
+                        string cfgName = cfg.GetValue("name") ?? L("未知型号", "Unknown");
 
-                allEnginesCache.Add(new EngineEntry
-                {
-                    part = ap,
-                    title = Localizer.Format(ap.title),
-                    deltaV = dV,
-                    twr = twr,
-                    ispVac = ispVac,
-                    ispASL = ispASL,
-                    price = ap.cost * engineCount,
-                    fuelInfo = string.Join("/", fuels),
-                    burnTimeDisplay = burnTime,
-                    ignitionsDisplay = ignitions,
-                    ullageInfo = ullage,
-                    displayWetMass = calcWet,
-                    displayVolume = calcVol,
-                    isJet = isJet,
-                    isSRB = isSRB,
-                    meetsSmartCriteria = meetsSmart,
-                    modSource = ap.partUrl.Split('/')[0]
-                });
+                        bool isHP = false;
+                        if (cfg.HasValue("type") && (cfg.GetValue("type").Contains("TankService") || cfg.GetValue("type").Contains("Pressure-fed"))) isHP = true;
+                        if (cfg.HasValue("pressureFed") && cfg.GetValue("pressureFed").ToLower() == "true") isHP = true;
+                        if (cfgName.IndexOf("Pressure-fed", StringComparison.OrdinalIgnoreCase) >= 0 || cfgName.IndexOf("Pressure Fed", StringComparison.OrdinalIgnoreCase) >= 0) isHP = true;
+
+                        float cfgT = baseMaxThrust; if (cfg.HasValue("maxThrust")) float.TryParse(cfg.GetValue("maxThrust"), out cfgT);
+                        float cfgIV = baseIspVac, cfgIA = baseIspASL;
+                        ConfigNode curve = cfg.GetNode("atmosphereCurve");
+                        if (curve != null)
+                        {
+                            foreach (string v in curve.GetValues("key"))
+                            {
+                                string[] s = v.Split(new char[] { ' ', ',' }, StringSplitOptions.RemoveEmptyEntries);
+                                if (s.Length >= 2 && float.TryParse(s[0], out float k) && float.TryParse(s[1], out float val))
+                                {
+                                    if (k < 0.1f) cfgIV = val; if (Math.Abs(k - 1f) < 0.1f) cfgIA = val;
+                                }
+                            }
+                        }
+                        group.configs.Add(CalculateConfig(cfgName, cfgT, cfgIV, cfgIA, baseMixDensity, baseFuels, baseUllage, baseIgnitions, baseBurnTime, ap, engineCount, isHP));
+                    }
+                }
+                else group.configs.Add(CalculateConfig(L("标准型号", "Standard"), baseMaxThrust, baseIspVac, baseIspASL, baseMixDensity, baseFuels, baseUllage, baseIgnitions, baseBurnTime, ap, engineCount, false));
+                allGroupsCache.Add(group);
             }
             ApplyFilters();
+        }
+
+        private EngineConfig CalculateConfig(string name, float T, float IV, float IA, float dens, List<string> f, string ull, string ign, string bt, AvailablePart ap, int cnt, bool isHP)
+        {
+            float isp = isVacMode ? IV : IA;
+            float thrust = (isVacMode ? T : T * (IA / Math.Max(1f, IV))) * cnt;
+            float dry = vesselMassAtSync + (ap.partPrefab.mass * cnt);
+            float dV = 0, twr = 0, vol = 0, wet = 0;
+            bool meet = true;
+
+            if (f.Contains("SolidFuel") || ap.partPrefab.FindModuleImplementing<ModuleEngines>().throttleLocked)
+            {
+                float fMass = ap.partPrefab.Resources.Where(r => r.resourceName == "SolidFuel").Sum(r => (float)(r.maxAmount * r.info.density));
+                wet = dry + (fMass * cnt); vol = (fMass * cnt / dens) / 1000f;
+                if (dry > 0) dV = isp * 9.80665f * Mathf.Log(wet / dry);
+                twr = thrust / (wet * 9.80665f);
+            }
+            else if (isSmartMode)
+            {
+                float R = Mathf.Exp(targetDV / (isp * 9.80665f)); wet = dry * R; vol = ((wet - dry) / dens) / 1000f;
+                twr = thrust / (wet * 9.80665f); if (twr < targetTWR) meet = false; dV = targetDV;
+            }
+            else
+            {
+                float fMass = (targetVolumeKL * 1000f) * dens; wet = dry + fMass; vol = targetVolumeKL;
+                if (dry > 0) dV = isp * 9.80665f * Mathf.Log(wet / dry);
+                twr = thrust / (wet * 9.80665f);
+            }
+
+            return new EngineConfig { configName = name, deltaV = dV, twr = twr, ispVac = IV, ispASL = IA, price = ap.cost * cnt, displayWetMass = wet, displayVolume = vol, fuelInfo = string.Join("/", f), ullageInfo = ull, ignitionsDisplay = ign, burnTimeDisplay = bt, meetsSmartCriteria = meet, needsHighPressure = isHP };
         }
 
         private void ApplyFilters()
         {
             isSciFiMode = ispLimit >= SCIFI_THRESHOLD;
-            var query = allEnginesCache.Where(e => {
-                bool typeMatch = (showRockets && !e.isJet && !e.isSRB) || (showJets && e.isJet) || (showSRB && e.isSRB);
-                if (!typeMatch) return false;
-                bool ispMatch = isSciFiMode || (isVacMode ? e.ispVac : e.ispASL) <= ispLimit;
-                bool twrMatch = (twrFilterLimit >= 20.1f || e.twr <= twrFilterLimit) && e.twr >= twrMinLimit;
-                bool smartMatch = !isSmartMode || e.meetsSmartCriteria;
-                bool searchMatch = string.IsNullOrEmpty(searchFilter) || e.title.IndexOf(searchFilter, StringComparison.OrdinalIgnoreCase) >= 0;
-                return ispMatch && twrMatch && smartMatch && searchMatch;
-            });
+            filteredGroups.Clear();
+            foreach (var g in allGroupsCache)
+            {
+                if (!((showRockets && !g.isJet && !g.isSRB) || (showJets && g.isJet) || (showSRB && g.isSRB))) continue;
+                if (!string.IsNullOrEmpty(searchFilter) && g.partTitle.IndexOf(searchFilter, StringComparison.OrdinalIgnoreCase) < 0) continue;
 
-            if (isSmartMode)
-                filteredResults = (sortByValue ? query.OrderBy(e => e.price) : query.OrderBy(e => e.displayVolume)).Take(40).ToList();
-            else
-                filteredResults = (sortByValue ? query.OrderByDescending(e => (e.deltaV / Math.Max(1f, e.price))) : query.OrderByDescending(e => e.deltaV)).Take(40).ToList();
+                var fg = new EnginePartGroup { part = g.part, partTitle = g.partTitle, isJet = g.isJet, isSRB = g.isSRB, configs = new List<EngineConfig>() };
+                foreach (var c in g.configs)
+                {
+                    if ((isSciFiMode || (isVacMode ? c.ispVac : c.ispASL) <= ispLimit) && (twrFilterLimit >= 20.1f || c.twr <= twrFilterLimit) && c.twr >= twrMinLimit && (!isSmartMode || c.meetsSmartCriteria))
+                        fg.configs.Add(c);
+                }
+                if (fg.configs.Count > 0) filteredGroups.Add(fg);
+            }
+            if (isSmartMode) filteredGroups = (sortByValue ? filteredGroups.OrderBy(g => g.MinPrice) : filteredGroups.OrderBy(g => g.MinVolume)).Take(40).ToList();
+            else filteredGroups = (sortByValue ? filteredGroups.OrderByDescending(g => g.MaxDVPerCost) : filteredGroups.OrderByDescending(g => g.MaxDeltaV)).Take(40).ToList();
         }
 
         private void OnGUI()
         {
             if (!isVisible) return;
+
+            Vector2 mousePos = Event.current.mousePosition;
+            if (windowRect.Contains(mousePos)) { InputLockManager.SetControlLock(ControlTypes.EDITOR_LOCK, lockID); }
+            else { InputLockManager.RemoveControlLock(lockID); }
+
             GUI.skin = HighLogic.Skin;
-            windowRect = GUILayout.Window(888, windowRect, DrawWindow, "引擎全效分析器 v0.9.6");
+            windowRect = GUILayout.Window(888, windowRect, DrawWindow, L("引擎全效分析器 v0.9.8", "Engine Analyzer v0.9.8"));
         }
 
         private void DrawWindow(int id)
@@ -265,14 +286,15 @@ namespace KSP_EngineAnalyzer
             GUILayout.BeginVertical();
 
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button(isVacMode ? "🌌 真空模式" : "🌍 海平面模式")) { isVacMode = !isVacMode; RefreshData(); }
-            if (GUILayout.Button(isSmartMode ? "🟢 逆向规划" : "⚪ 常规分析")) { isSmartMode = !isSmartMode; RefreshData(); }
+            if (GUILayout.Button(isVacMode ? L("🌌 真空模式", "🌌 Vacuum") : L("🌍 海平面模式", "🌍 Sea Level"))) { isVacMode = !isVacMode; RefreshData(); }
+            if (GUILayout.Button(isSmartMode ? L("🟢 逆向规划", "🟢 Reverse") : L("⚪ 常规分析", "⚪ Normal"))) { isSmartMode = !isSmartMode; RefreshData(); }
             GUILayout.EndHorizontal();
 
             GUILayout.BeginVertical(GUI.skin.box);
+
             GUILayout.BeginHorizontal();
-            GUILayout.Label($"锁定载荷: <color=yellow>{lockedPayloadMass:F2}t</color>", GUILayout.Width(120));
-            if (GUILayout.Button("<color=lime>完成并锁定当前级</color>"))
+            GUILayout.Label($"{L("同步全重", "Sync Mass")}: <color=yellow>{vesselMassAtSync:F2}t</color>", GUILayout.Width(130));
+            if (GUILayout.Button(L("<color=lime>完成并锁定当前级</color>", "<color=lime>Lock Current Stage</color>")))
             {
                 lockedWetMasses.Add(GetShipTotalMass());
                 lockedDryMasses.Add(GetShipDryMass());
@@ -280,74 +302,64 @@ namespace KSP_EngineAnalyzer
                 SyncCurrentStage();
                 RefreshData();
             }
-            if (GUILayout.Button("<color=orange>重置整个程序</color>"))
-            {
-                lockedWetMasses.Clear();
-                lockedDryMasses.Clear();
-                lockedVolumes.Clear();
-                lockedPayloadMass = 0f;
-                currentStageDryMass = 0.001f;
-                targetVolumeKL = 0f;
-                targetVolumeInput = "0.00";
-                lastPartCount = 0;
-                RefreshData();
-            }
+            if (GUILayout.Button(L("<color=orange>清空重置</color>", "<color=orange>Reset All</color>"))) { lockedWetMasses.Clear(); lockedDryMasses.Clear(); lockedVolumes.Clear(); vesselMassAtSync = 0; SyncCurrentStage(); RefreshData(); }
             GUILayout.EndHorizontal();
 
-            GUILayout.BeginHorizontal();
-            GUILayout.Label($"当前级增重: {currentStageDryMass:F2}t", GUILayout.Width(120));
-            if (GUILayout.Button("同步VAB数据")) { SyncCurrentStage(); RefreshData(); }
-            GUILayout.EndHorizontal();
-
-            GUILayout.BeginHorizontal();
-            GUILayout.Label("储箱容积(kL):", GUILayout.Width(90));
-            targetVolumeInput = GUILayout.TextField(targetVolumeInput, GUILayout.Width(50));
-            if (float.TryParse(targetVolumeInput, out float vRes))
+            if (lockedWetMasses.Count > 0)
             {
-                if (Math.Abs(vRes - targetVolumeKL) > 0.001f)
+                showStageHistory = GUILayout.Toggle(showStageHistory, $" {L("查看历史分级", "History")} ({lockedWetMasses.Count})");
+                if (showStageHistory)
                 {
-                    targetVolumeKL = vRes;
-                    RefreshData();
+                    for (int i = 0; i < lockedWetMasses.Count; i++)
+                    {
+                        GUILayout.Label($"  S{i + 1}: {L("湿重", "Wet")} {lockedWetMasses[i]:F2}t | {L("容积", "Vol")} {lockedVolumes[i]:F1}kL", GUI.skin.GetStyle("CaptionLabel"));
+                    }
                 }
             }
+
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button(L("同步VAB数据", "Sync VAB Data"))) { SyncCurrentStage(); RefreshData(); }
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(L("容积(kL):", "Vol(kL):"), GUILayout.Width(60));
+            targetVolumeInput = GUILayout.TextField(targetVolumeInput, GUILayout.Width(50));
+            if (float.TryParse(targetVolumeInput, out float v) && Math.Abs(v - targetVolumeKL) > 0.01f) { targetVolumeKL = v; RefreshData(); }
             GUILayout.Space(20);
-            GUILayout.Label($"集群: {engineCount}", GUILayout.Width(50));
-            int newCount = (int)GUILayout.HorizontalSlider(engineCount, 1, 12);
-            if (newCount != engineCount) { engineCount = newCount; RefreshData(); }
+            GUILayout.Label($"{L("集群", "Cluster")}: {engineCount}", GUILayout.Width(50));
+            int nc = (int)GUILayout.HorizontalSlider(engineCount, 1, 12); if (nc != engineCount) { engineCount = nc; RefreshData(); }
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
-            bool r = GUILayout.Toggle(showRockets, " 火箭", GUILayout.Width(60));
-            GUILayout.Space(40);
-            bool j = GUILayout.Toggle(showJets, " 喷气", GUILayout.Width(60));
-            GUILayout.Space(40);
-            bool s = GUILayout.Toggle(showSRB, " 固推", GUILayout.Width(60));
-            GUILayout.Space(60);
-            bool sbv = GUILayout.Toggle(sortByValue, " 性价比排序", GUILayout.Width(100));
-
-            if (r != showRockets || j != showJets || s != showSRB || sbv != sortByValue)
-            {
-                showRockets = r; showJets = j; showSRB = s; sortByValue = sbv; ApplyFilters();
-            }
+            bool r = GUILayout.Toggle(showRockets, L(" 火箭", " Rocket"), GUILayout.Width(60));
+            GUILayout.Space(10);
+            bool j = GUILayout.Toggle(showJets, L(" 喷气", " Jet"), GUILayout.Width(60));
+            GUILayout.Space(10);
+            bool s = GUILayout.Toggle(showSRB, L(" 固推", " SRB"), GUILayout.Width(60));
+            GUILayout.Space(10);
+            bool sbv = GUILayout.Toggle(sortByValue, L(" 性价比排序", " Sort by Value"));
             GUILayout.FlexibleSpace();
+            if (GUILayout.Button("ZH", GUILayout.Width(35))) { isEnglish = false; RefreshData(); }
+            if (GUILayout.Button("EN", GUILayout.Width(35))) { isEnglish = true; RefreshData(); }
+            if (r != showRockets || j != showJets || s != showSRB || sbv != sortByValue) { showRockets = r; showJets = j; showSRB = s; sortByValue = sbv; ApplyFilters(); }
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
-            string ispDisplay = ispLimit >= SCIFI_THRESHOLD ? "<color=magenta>科幻模式</color>" : $"{ispLimit:F0}s";
-            GUILayout.Label($"比冲限制: {ispDisplay}", GUILayout.Width(110));
+            string ispDisplay = ispLimit >= SCIFI_THRESHOLD ? L("<color=magenta>科幻模式</color>", "<color=magenta>Sci-Fi</color>") : $"{ispLimit:F0}s";
+            GUILayout.Label($"{L("比冲限制", "Isp Limit")}: {ispDisplay}", GUILayout.Width(110));
             float nIsp = GUILayout.HorizontalSlider(ispLimit, 100f, 20001f);
             if (Math.Abs(nIsp - ispLimit) > 1f) { ispLimit = nIsp; ApplyFilters(); }
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
-            string twrVal = twrFilterLimit >= 20.1f ? "无上限" : twrFilterLimit.ToString("F1");
-            GUILayout.Label($"TWR上限: {twrVal}", GUILayout.Width(110));
+            string twrVal = twrFilterLimit >= 20.1f ? L("无上限", "None") : twrFilterLimit.ToString("F1");
+            GUILayout.Label($"{L("TWR上限", "Max TWR")}: {twrVal}", GUILayout.Width(110));
             float nt = GUILayout.HorizontalSlider(twrFilterLimit, 0.1f, 20.1f);
             if (Math.Abs(nt - twrFilterLimit) > 0.01f) { twrFilterLimit = nt; ApplyFilters(); }
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
-            GUILayout.Label($"TWR下限: {twrMinLimit:F1}", GUILayout.Width(110));
+            GUILayout.Label($"{L("TWR下限", "Min TWR")}: {twrMinLimit:F1}", GUILayout.Width(110));
             float ntm = GUILayout.HorizontalSlider(twrMinLimit, 0.0f, 10.0f);
             if (Math.Abs(ntm - twrMinLimit) > 0.01f) { twrMinLimit = ntm; ApplyFilters(); }
             GUILayout.EndHorizontal();
@@ -355,53 +367,77 @@ namespace KSP_EngineAnalyzer
             if (isSmartMode)
             {
                 GUILayout.BeginHorizontal();
-                GUILayout.Label("目标 Δv:", GUILayout.Width(60));
+                GUILayout.Label(L("目标 Δv:", "Target Δv:"), GUILayout.Width(60));
                 targetDVInput = GUILayout.TextField(targetDVInput, GUILayout.Width(50));
                 if (float.TryParse(targetDVInput, out float d)) targetDV = d;
-                GUILayout.Label("最低TWR:", GUILayout.Width(60));
+                GUILayout.Label(L("最低TWR:", "Min TWR:"), GUILayout.Width(60));
                 targetTWRInput = GUILayout.TextField(targetTWRInput, GUILayout.Width(40));
                 if (float.TryParse(targetTWRInput, out float t)) targetTWR = t;
                 GUILayout.EndHorizontal();
             }
 
-            searchFilter = GUILayout.TextField(searchFilter, GUI.skin.FindStyle("TextField"));
+            GUILayout.BeginHorizontal();
+            GUILayout.Label(L("搜索:", "Search:"), GUILayout.Width(40));
+            string newFilter = GUILayout.TextField(searchFilter, GUILayout.Width(200));
+            if (newFilter != searchFilter) { searchFilter = newFilter; ApplyFilters(); }
+            GUILayout.EndHorizontal();
+
             GUILayout.EndVertical();
 
             scrollPosition = GUILayout.BeginScrollView(scrollPosition);
-            foreach (var e in filteredResults)
+            foreach (var group in filteredGroups)
             {
                 GUILayout.BeginVertical(GUI.skin.box);
-                GUILayout.BeginHorizontal();
-                string typeLabel = e.isJet ? "<color=orange>[喷气]</color> " : (e.isSRB ? "<color=red>[固推]</color> " : "<color=cyan>[火箭]</color> ");
-                GUILayout.Label($"{typeLabel}<b>{e.title}</b>" + (engineCount > 1 ? $" x{engineCount}" : ""));
-                if (GUILayout.Button("选取", GUILayout.Width(45))) EditorLogic.fetch.SpawnPart(e.part);
-                GUILayout.EndHorizontal();
+                string typeLabel = group.isJet ? L("<color=orange>[喷气]</color> ", "<color=orange>[Jet]</color> ") : (group.isSRB ? L("<color=red>[固推]</color> ", "<color=red>[SRB]</color> ") : L("<color=cyan>[火箭]</color> ", "<color=cyan>[Rocket]</color> "));
+                GUILayout.Label($"<size=15>{typeLabel}<b>{group.partTitle}</b>{(engineCount > 1 ? $" x{engineCount}" : "")}</size>");
 
-                GUILayout.BeginHorizontal();
-                GUILayout.Label($"Δv: <color=lime>{e.deltaV:F0}</color>", GUILayout.Width(80));
-                GUILayout.Label($"TWR: {e.twr:F2}", GUILayout.Width(70));
-                GUILayout.Label($"Isp: {e.ispVac:F0}", GUILayout.Width(70));
-                GUILayout.Label(isSmartMode ? $"容积: {e.displayVolume:F1}kL" : $"总重: {e.displayWetMass:F1}t");
-                GUILayout.Label($"$: <color=yellow>{e.price:F0}</color>");
-                GUILayout.EndHorizontal();
+                for (int i = 0; i < group.configs.Count; i++)
+                {
+                    var cfg = group.configs[i];
+                    GUILayout.BeginVertical(GUI.skin.box);
+                    GUILayout.BeginHorizontal();
 
-                string meta = $"燃料: {e.fuelInfo} | {e.ullageInfo} | <color=orange>{e.ignitionsDisplay}</color> | 燃烧: {e.burnTimeDisplay}";
-                GUILayout.Label($"<size=10><color=#999999>{meta}</color></size>");
+                    string hpDisplay = cfg.needsHighPressure ? L("<color=red>[需高压罐]</color> ", "<color=red>[High Pressure]</color> ") : "";
+
+                    GUILayout.Label($"{hpDisplay}<size=13><color=#E0E0E0>▶ {L("型号", "Config")}: {cfg.configName}</color></size>");
+                    if (GUILayout.Button(L("选取", "Select"), GUILayout.Width(60))) SpawnAndConfigure(group.part, cfg.configName);
+                    GUILayout.EndHorizontal();
+
+                    GUILayout.BeginHorizontal();
+                    GUILayout.Label($"Δv: <color=lime>{cfg.deltaV:F0}</color>", GUILayout.Width(80));
+                    GUILayout.Label($"TWR: {cfg.twr:F2}", GUILayout.Width(70));
+                    GUILayout.Label($"Isp: {cfg.ispVac:F0}", GUILayout.Width(70));
+                    GUILayout.Label(isSmartMode ? $"{cfg.displayVolume:F1}kL" : $"{cfg.displayWetMass:F1}t");
+                    GUILayout.Label($"$: <color=yellow>{cfg.price:F0}</color>");
+                    GUILayout.EndHorizontal();
+
+                    GUILayout.Label($"<size=10><color=#999999>{L("燃料", "Fuel")}: {cfg.fuelInfo} | {cfg.ullageInfo} | <color=orange>{cfg.ignitionsDisplay}</color> | {L("燃时", "Burn")}: {cfg.burnTimeDisplay}</color></size>");
+                    GUILayout.EndVertical();
+                    if (i < group.configs.Count - 1) GUILayout.Space(5);
+                }
                 GUILayout.EndVertical();
+                GUILayout.Space(10);
             }
             GUILayout.EndScrollView();
-
-            if (GUILayout.Button("关闭窗口", GUILayout.Height(25))) isVisible = false;
+            if (GUILayout.Button(L("关闭窗口", "Close Window"), GUILayout.Height(25))) isVisible = false;
             GUILayout.EndVertical();
             GUI.DragWindow();
         }
     }
 
-    public class EngineEntry
+    public class EnginePartGroup
     {
-        public AvailablePart part;
-        public string title, burnTimeDisplay, modSource, fuelInfo, ullageInfo, ignitionsDisplay;
+        public AvailablePart part; public string partTitle; public bool isJet, isSRB;
+        public List<EngineConfig> configs = new List<EngineConfig>();
+        public float MinPrice => configs.Count > 0 ? configs.Min(c => c.price) : 0;
+        public float MinVolume => configs.Count > 0 ? configs.Min(c => c.displayVolume) : 0;
+        public float MaxDeltaV => configs.Count > 0 ? configs.Max(c => c.deltaV) : 0;
+        public float MaxDVPerCost => configs.Count > 0 ? configs.Max(c => c.deltaV / Math.Max(1f, c.price)) : 0;
+    }
+    public class EngineConfig
+    {
+        public string configName, burnTimeDisplay, fuelInfo, ullageInfo, ignitionsDisplay;
         public float deltaV, twr, ispVac, ispASL, price, displayWetMass, displayVolume;
-        public bool isJet, isSRB, meetsSmartCriteria;
+        public bool meetsSmartCriteria, needsHighPressure;
     }
 }
