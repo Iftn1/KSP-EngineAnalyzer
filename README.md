@@ -1,34 +1,34 @@
-# KSP全效引擎分析器 | KSP EngineAnalyzer
-一个为坎巴拉太空计划 (KSP) 打造的高级引擎筛选与规划工具，可通过一些数学计算为你推荐你当前航天器最合适的发动机。
-安装后在VAB页面按下Ctrl+E键即可开始使用。[English Version](./docs/English/README.md)
+# KSP EngineAnalyzer
+An advanced engine screening and planning tool built for Kerbal Space Program (KSP). It uses mathematical simulations to recommend the most suitable engines for your current spacecraft.
 
-### 功能介绍 ###
-- **真空模式** - 尽量为你选择真空发动机，同时使用真空比冲和推力进行计算，按下切换为“海平面模式”。
-- **海平面模式** - 使用海平面比冲和推力进行计算（程序尽量过滤掉海平面比冲过低或推力相差巨大的发动机），按下切换回“真空模式”。
-- **常规分析** - 给定比冲限制、TWR上下限来选取能提供的Dv最多的发动机，按下切换为：逆向规划。
-- **逆向规划** - 给定Dv和最低TWR推荐发动机，可以拉动TWR下限条也可以直接输入想要的TWR（功能不稳定）。
-- **完成并锁定当前级** - 按下记录当前质量与油箱容积，并准备记录下一次分级。
-- **重置整个程序** - 把程序初始化。（想新建火箭或者用错发动机了点一下即可）。
-- **同步VAB数据** - 放置油箱或者更改部件后为程序更新数据。
-- **储箱容积（KL）** - 自动根据目前总容积减去前面分级记录的容积得到当前分级的油箱容积，可手动输入。
-- **集群** - 使用多个发动机时的情况，最高支持12个发动机。
-- **火箭、喷气、固推** - 指示灯亮为显示这个种类的发动机，不亮则过滤掉这种发动机。
-- **性价比排序** - 按照每资金能够买到多少Dv的方式来排序发动机。
-- **比冲限制** - 可以过滤掉高于这个比冲的发动机，拉到2W不再过滤开启科幻模式。
-- **TWR上限** - 规定当前模式下（真空、海平面）航天器的最高推重比为多少，会自动计算燃料质量。
-- **TWR下限** - 当前模式下航天器推重比最低不能低于多少。
-- **搜索框** - 搜索你想要的引擎。
-- **发动机推荐页面** - 【显示发动机类型】“发动机名称”{选取可以直接拿取该发动机}
-   - **第二行数据** - Dv：当前油箱容积下预测Dv、TWR：预计推重比、lsp：比冲、总重：添加燃料后预计总重、$：发动机价格
-   - **第三行数据** - 燃料：显示发动机使用的燃料、发动机点火前是否需要燃料沉底、发动机可点火次数、额定燃烧时间。
+Press **Ctrl+E** in the VAB/SPH to start. [中文说明](./README.md)
 
-## 下载及安装 | Download and Installation
+### Features ###
+- **Vacuum Mode** - Optimizes for vacuum engines using vacuum Isp and thrust values. Toggle to switch to "Sea Level Mode".
+- **Sea Level Mode** - Calculations based on sea level Isp and thrust. Filters out engines with extremely low sea level Isp or massive thrust drop-offs.
+- **Normal Analysis** - Recommends engines providing the maximum Δv based on your Isp limits and TWR range. Toggle to switch to "Reverse Planning".
+- **Reverse Planning** - Recommends engines based on a target Δv and minimum TWR. You can use the slider or manual input for TWR (Experimental).
+- **Lock Current Stage** - Records current mass and tank volume to prepare for the next stage calculation.
+- **Reset All** - Reinitializes the program (use this when starting a new vessel or clearing errors).
+- **Sync VAB Data** - Updates data after placing tanks or modifying parts.
+- **Tank Volume (kL)** - Automatically calculates volume by subtracting previously locked stages from the total volume. Supports manual input.
+- **Cluster** - Simulates multi-engine configurations (supports up to 12 engines).
+- **Rocket, Jet, SRB Filters** - Toggle lights to show or filter specific engine types.
+- **Sort by Value** - Sorts engines by "Δv per Fund" to find the most cost-effective options.
+- **Isp Limit** - Filters out engines above a certain Isp. Slide to 20,000 to enable "Sci-Fi Mode" (removes filter).
+- **Max TWR** - Sets the maximum allowed Thrust-to-Weight Ratio for the current mode; automatically accounts for fuel mass.
+- **Min TWR** - Sets the minimum required TWR for the current mode.
+- **Search Bar** - Quickly find engines by name.
+- **Engine Recommendation List** - `[Engine Type]` **Engine Name** {Select button spawns and configures the part}.
+   - **Second Row**: Δv (Predicted), TWR (Predicted), Isp, Total Mass (Wet), $ (Price).
+   - **Third Row**: Fuel type, Ullage requirement, Ignition count, and Rated burn time.
 
-模组大概是兼容所有KSP版本的（我没做过测试我不知道），需要安装Realfuels（这不是废话吗）。
+## Download and Installation ##
 
-下载发行文件，并像常规模组那样安装即可，安装路径应为`X:\...\Kerbal Space Program\GameData\EngineAnalyzer`，X 为你的安装分区。
+This mod is generally compatible with most KSP versions (untested) and requires **RealFuels** to function.
 
-安装完成后打开游戏进入VAB中按下Ctrl+E键如果跳出如下界面即为安装成功。
-
-<img width="847" height="951" alt="240ba631-5091-4cf9-8116-9bba678a6fba" src="https://github.com/user-attachments/assets/c8736424-dfb3-4b1b-a135-db795d06dc47" />
-<img width="1063" height="733" alt="64afda6fa29e7f7b7f2bacf9f820ea59" src="https://github.com/user-attachments/assets/94744266-c675-4776-a571-ac1eb9b98930" />
+1. Download the latest release file.
+2. Install like any standard mod. The path should be:  
+   `X:\...\Kerbal Space Program\GameData\EngineAnalyzer` (where X is your drive).
+3. Once installed, enter the VAB and press **Ctrl+E**. If the interface appears, the installation was successful.
+<img width="857" height="713" alt="f254d3f3651913bf14a835f2bb7ae364" src="https://github.com/user-attachments/assets/cf49e697-d182-47ee-b508-47194dadbade" />
