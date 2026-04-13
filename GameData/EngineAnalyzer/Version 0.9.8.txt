@@ -1,4 +1,6 @@
 1.增加历史分级功能：按下锁定并完成当前分级后会出现一个History，按下按钮后显示历史分级。
 2.修改同步数据逻辑：按下同步VAB数据后会记录当前航天器总重然后再计算Dv。
+3.增加中英文切换功能。
 1.Add Historical Staging Feature: After pressing lock and completing the current stage, a History button will appear. Pressing this button will display the historical staging data.
 2.Modify Data Synchronization Logic: After pressing "Sync VAB Data," the system will record the current total mass of the spacecraft before calculating the Delta-v.
+3.Add Chinese-English Language Switching Feature.
