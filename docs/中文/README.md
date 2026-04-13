@@ -31,4 +31,3 @@
 安装完成后打开游戏进入VAB中按下Ctrl+E键如果跳出如下界面即为安装成功。
 
 <img width="847" height="951" alt="240ba631-5091-4cf9-8116-9bba678a6fba" src="https://github.com/user-attachments/assets/c8736424-dfb3-4b1b-a135-db795d06dc47" />
-<img width="1063" height="733" alt="64afda6fa29e7f7b7f2bacf9f820ea59" src="https://github.com/user-attachments/assets/94744266-c675-4776-a571-ac1eb9b98930" />
