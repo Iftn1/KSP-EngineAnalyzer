@@ -1,7 +1,7 @@
 # KSP EngineAnalyzer
 An advanced engine screening and planning tool built for Kerbal Space Program (KSP). It uses mathematical simulations to recommend the most suitable engines for your current spacecraft.
 
-Press **Ctrl+E** in the VAB/SPH to start. [中文说明](./README.md)
+Press **Ctrl+E** in the VAB/SPH to start. [中文说明](./docs/中文/README.md)
 
 ### Features ###
 - **Vacuum Mode** - Optimizes for vacuum engines using vacuum Isp and thrust values. Toggle to switch to "Sea Level Mode".
