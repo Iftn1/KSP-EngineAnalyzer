@@ -11,3 +11,17 @@ V0.9.9
 2.增加多维度排序功能：新增Δv、TWR、Isp、性价比四种排序方式，点击对应按钮切换。
 1.Add Researched Engine Filter: When checked, only displays engines that the player has unlocked in the tech tree.
 2.Add Multi-Dimension Sorting: Added four sorting modes - Δv, TWR, Isp, and Value. Click the corresponding button to switch.
+
+V1.0.0
+1.修复海平面推力计算：使用发动机实际推力曲线获取精确的海平面推力值。
+2.修复紧凑模式显示：在紧凑模式下显示发动机尺寸、燃料类型、沉底需求、点火次数和燃烧时间。
+3.修复搜索框换行问题：调整搜索框布局，防止"Search"文本换行。
+4.增加设置自动保存：所有设置（语言、紧凑模式、过滤器等）自动保存并在下次打开时恢复。
+5.增加引擎尺寸过滤：支持按0.625m、1.25m、2.5m、3.75m尺寸过滤发动机。
+6.增加隐藏引擎标记：在引擎名称后显示红色[隐藏]标记，帮助识别不可用的引擎。
+1.Fix Sea Level Thrust Calculation: Use the engine's actual thrust curve to get accurate sea level thrust values.
+2.Fix Compact Mode Display: Show engine size, fuel type, ullage requirement, ignition count, and burn time in compact mode.
+3.Fix Search Box Wrapping: Adjust search box layout to prevent text wrapping.
+4.Add Settings Auto-Save: All settings (language, compact mode, filters, etc.) are automatically saved and restored on next launch.
+5.Add Engine Size Filter: Support filtering engines by size (0.625m, 1.25m, 2.5m, 3.75m).
+6.Add Hidden Engine Marker: Display red [Hidden] marker after engine names to identify unavailable engines.
