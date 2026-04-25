@@ -38,4 +38,6 @@ This mod is generally compatible with most KSP versions (untested) and requires 
    `X:\...\Kerbal Space Program\GameData\EngineAnalyzer` (where X is your drive). 
 3. Once installed, enter the VAB and press **Ctrl+E**. If the interface appears, the installation was successful. 
 
-<img width="871" height="656" alt="image" src="https://github.com/user-attachments/assets/2a2fc492-b9a2-4060-9430-1659de42efd3" />
+<img width="846" height="952" alt="91c2a14469a50d26142347b0970b3b1f" src="https://github.com/user-attachments/assets/e0c8c09e-2ee4-4041-8d1d-ecf860c286ed" />
+
+<img width="459" height="770" alt="81db1e28180bd3a5e049b36e264d0730" src="https://github.com/user-attachments/assets/394e03eb-cd2a-410c-849c-3c6aad4b81bf" />
