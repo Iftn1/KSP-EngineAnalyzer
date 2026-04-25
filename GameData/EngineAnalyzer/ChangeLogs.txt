@@ -1,0 +1,13 @@
+V0.9.8
+1.增加历史分级功能：按下锁定并完成当前分级后会出现一个History，按下按钮后显示历史分级。
+2.修改同步数据逻辑：按下同步VAB数据后会记录当前航天器总重然后再计算Dv。
+3.增加中英文切换功能。
+1.Add Historical Staging Feature: After pressing lock and completing the current stage, a History button will appear. Pressing this button will display the historical staging data.
+2.Modify Data Synchronization Logic: After pressing "Sync VAB Data," the system will record the current total mass of the spacecraft before calculating the Delta-v.
+3.Add Chinese-English Language Switching Feature.
+
+V0.9.9
+1.增加只显示已研究引擎功能：勾选后仅显示玩家已在科技树中解锁的发动机。
+2.增加多维度排序功能：新增Δv、TWR、Isp、性价比四种排序方式，点击对应按钮切换。
+1.Add Researched Engine Filter: When checked, only displays engines that the player has unlocked in the tech tree.
+2.Add Multi-Dimension Sorting: Added four sorting modes - Δv, TWR, Isp, and Value. Click the corresponding button to switch.
