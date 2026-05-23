@@ -1160,7 +1160,7 @@ namespace KSP_EngineAnalyzer
             GUILayout.Space(10);
             bool s = GUILayout.Toggle(showSRB, L(" 固推", " SRB"), GUILayout.Width(60));
             GUILayout.Space(10);
-            bool or = GUILayout.Toggle(onlyResearched, L(" 只显示已研究", " Researched Only"), GUILayout.Width(120));
+            bool or = GUILayout.Toggle(onlyResearched, L(" 只显示已研究", " Researched"), GUILayout.Width(100));
             GUILayout.FlexibleSpace();
             if (GUILayout.Button("ZH", GUILayout.Width(35))) { isEnglish = false; RefreshData(); }
             if (GUILayout.Button("EN", GUILayout.Width(35))) { isEnglish = true; RefreshData(); }
@@ -1177,9 +1177,10 @@ namespace KSP_EngineAnalyzer
                 if (GUILayout.Button(currentSizeFilter == SizeFilter.Size125 ? L("<color=lime>1.25m</color>", "<color=lime>1.25m</color>") : L("1.25m", "1.25m"), GUILayout.Width(60))) { currentSizeFilter = SizeFilter.Size125; ApplyFilters(); }
                 if (GUILayout.Button(currentSizeFilter == SizeFilter.Size25 ? L("<color=lime>2.5m</color>", "<color=lime>2.5m</color>") : L("2.5m", "2.5m"), GUILayout.Width(55))) { currentSizeFilter = SizeFilter.Size25; ApplyFilters(); }
                 if (GUILayout.Button(currentSizeFilter == SizeFilter.Size375 ? L("<color=lime>3.75m</color>", "<color=lime>3.75m</color>") : L("3.75m", "3.75m"), GUILayout.Width(60))) { currentSizeFilter = SizeFilter.Size375; ApplyFilters(); }
-                GUILayout.FlexibleSpace();
-                fd = GUILayout.Toggle(filterDeprecated, L(" 无废弃", " No Dep"), GUILayout.Width(75));
-                fn = GUILayout.Toggle(filterNonRO, L(" 纯RO", " Only RO"), GUILayout.Width(75));
+                GUILayout.Space(20f);
+                fd = GUILayout.Toggle(filterDeprecated, L(" 无废弃", " No Dep"), GUILayout.Width(70));
+                GUILayout.Space(5f);
+                fn = GUILayout.Toggle(filterNonRO, L(" 纯 RO", " Only RO"), GUILayout.Width(70));
                 GUILayout.EndHorizontal();
 
                 // Fuel filter commented out due to instability
@@ -1583,11 +1584,11 @@ namespace KSP_EngineAnalyzer
                 if (Event.current.type == EventType.Repaint)
                 {
                     _cachedChartRect = reservedRect;
-                    DrawThrustCurve(_cachedChartRect, displayCurve, chartMaxKN, burnTime, curveTimeMax, detailWindowRect);
+                    DrawThrustCurve(_cachedChartRect, displayCurve, chartMaxKN, burnTime, curveTimeMax);
                 }
                 else if (_cachedChartRect != Rect.zero)
                 {
-                    DrawThrustCurve(_cachedChartRect, displayCurve, chartMaxKN, burnTime, curveTimeMax, detailWindowRect);
+                    DrawThrustCurve(_cachedChartRect, displayCurve, chartMaxKN, burnTime, curveTimeMax);
                 }
 
                 GUILayout.BeginHorizontal(GUILayout.Width(chartWidth));
@@ -2051,7 +2052,7 @@ namespace KSP_EngineAnalyzer
             return burnTime > 0 ? burnTime : 150f;
         }
 
-        private void DrawThrustCurve(Rect rect, AnimationCurve curve, float maxThrust, float burnTime = 150f, float curveTimeMax = 1f, Rect winRect = default(Rect))
+        private void DrawThrustCurve(Rect rect, AnimationCurve curve, float maxThrust, float burnTime = 150f, float curveTimeMax = 1f)
         {
             if (Event.current.type != EventType.Repaint) return;
             if (curve == null || curve.keys.Length < 2) return;
@@ -2069,8 +2070,8 @@ namespace KSP_EngineAnalyzer
                 if (!float.IsNaN(v) && !float.IsInfinity(v) && v > curveMax) curveMax = v;
             }
 
-            float ox = winRect.x + rect.x;
-            float oy = winRect.y + rect.y;
+            float ox = detailWindowRect.x + rect.x - detailScrollPosition.x;
+            float oy = detailWindowRect.y + rect.y - detailScrollPosition.y;
             float w = rect.width, h = rect.height;
             float sh = Screen.height;
 
