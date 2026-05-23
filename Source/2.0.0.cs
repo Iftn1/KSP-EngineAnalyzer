@@ -1584,11 +1584,11 @@ namespace KSP_EngineAnalyzer
                 if (Event.current.type == EventType.Repaint)
                 {
                     _cachedChartRect = reservedRect;
-                    DrawThrustCurve(_cachedChartRect, displayCurve, chartMaxKN, burnTime, curveTimeMax);
+                    DrawThrustCurve(_cachedChartRect, displayCurve, chartMaxKN, detailWindowRect, burnTime, curveTimeMax);
                 }
                 else if (_cachedChartRect != Rect.zero)
                 {
-                    DrawThrustCurve(_cachedChartRect, displayCurve, chartMaxKN, burnTime, curveTimeMax);
+                    DrawThrustCurve(_cachedChartRect, displayCurve, chartMaxKN, detailWindowRect, burnTime, curveTimeMax);
                 }
 
                 GUILayout.BeginHorizontal(GUILayout.Width(chartWidth));
@@ -2052,7 +2052,7 @@ namespace KSP_EngineAnalyzer
             return burnTime > 0 ? burnTime : 150f;
         }
 
-        private void DrawThrustCurve(Rect rect, AnimationCurve curve, float maxThrust, float burnTime = 150f, float curveTimeMax = 1f)
+        private void DrawThrustCurve(Rect rect, AnimationCurve curve, float maxThrust, Rect currentDetailRect, float burnTime = 150f, float curveTimeMax = 1f)
         {
             if (Event.current.type != EventType.Repaint) return;
             if (curve == null || curve.keys.Length < 2) return;
@@ -2070,8 +2070,8 @@ namespace KSP_EngineAnalyzer
                 if (!float.IsNaN(v) && !float.IsInfinity(v) && v > curveMax) curveMax = v;
             }
 
-            float ox = detailWindowRect.x + rect.x - detailScrollPosition.x;
-            float oy = detailWindowRect.y + rect.y - detailScrollPosition.y;
+            float ox = currentDetailRect.x + rect.x - detailScrollPosition.x;
+            float oy = currentDetailRect.y + rect.y - detailScrollPosition.y;
             float w = rect.width, h = rect.height;
             float sh = Screen.height;
 
