@@ -153,46 +153,46 @@ namespace KSP_EngineAnalyzer
             {
                 var field = prop.GetType().GetField("maxAmount");
                 if (field != null) return (float)field.GetValue(prop);
-                
+
                 var property = prop.GetType().GetProperty("maxAmount");
                 if (property != null) return (float)property.GetValue(prop);
             }
             catch { }
-            
+
             return 0f;
         }
 
         private FuelType DetectFuelType(AvailablePart ap)
         {
             var engineMod = FindEngineModule(ap);
-            
+
             if (engineMod != null)
             {
                 var propellantNames = engineMod.propellants.Select(p => p.name.ToLower()).ToList();
-                
+
                 if (propellantNames.Contains("solidfuel")) return FuelType.SolidFuel;
                 if (propellantNames.Contains("intakeair")) return FuelType.Airbreathing;
                 if (propellantNames.Contains("xenongas")) return FuelType.Xenon;
                 if (propellantNames.Contains("electriccharge")) return FuelType.Electric;
                 if (propellantNames.Contains("monopropellant")) return FuelType.Monopropellant;
-                
+
                 if (propellantNames.Contains("liquidfuel") && propellantNames.Contains("oxidizer"))
                     return FuelType.LOXKerosene;
                 if (propellantNames.Contains("liquidhydrogen") && propellantNames.Contains("oxidizer"))
                     return FuelType.LOXH2;
                 if (propellantNames.Contains("methane") && propellantNames.Contains("oxidizer"))
                     return FuelType.LOXMethane;
-                
-                bool hasFuel = propellantNames.Any(p => p.Contains("hydrazine") || p.Contains("aerozine") || 
+
+                bool hasFuel = propellantNames.Any(p => p.Contains("hydrazine") || p.Contains("aerozine") ||
                                                       p.Contains("mmh") || p.Contains("udmh") || p.Contains("dmh"));
                 bool hasOxidizer = propellantNames.Any(p => p.Contains("n2o4") || propellantNames.Contains("oxidizer"));
                 if (hasFuel && hasOxidizer) return FuelType.Hypergolic;
             }
-            
-            var cfgNode = ap.partConfig?.GetNodes("MODULE").FirstOrDefault(n => 
-                (n.GetValue("name")?.Contains("EnginesRF") ?? false) || 
+
+            var cfgNode = ap.partConfig?.GetNodes("MODULE").FirstOrDefault(n =>
+                (n.GetValue("name")?.Contains("EnginesRF") ?? false) ||
                 (n.GetValue("name")?.Contains("RealEngine") ?? false));
-            
+
             if (cfgNode != null)
             {
                 var propellantNodes = cfgNode.GetNodes("PROPELLANT");
@@ -204,7 +204,7 @@ namespace KSP_EngineAnalyzer
                         string name = pNode.GetValue("name");
                         if (!string.IsNullOrEmpty(name)) propellants.Add(name.ToLower());
                     }
-                    
+
                     if (propellants.Contains("solidfuel")) return FuelType.SolidFuel;
                     if (propellants.Contains("monopropellant")) return FuelType.Monopropellant;
                     if (propellants.Contains("liquidhydrogen")) return FuelType.LOXH2;
@@ -214,7 +214,7 @@ namespace KSP_EngineAnalyzer
                         return FuelType.Hypergolic;
                 }
             }
-            
+
             return FuelType.Other;
         }
 
@@ -340,7 +340,7 @@ namespace KSP_EngineAnalyzer
             var fixedKeys = curve.keys;
             for (int i = 0; i < fixedKeys.Length; i++)
             {
-                fixedKeys[i].inTangent  = keys[i].inTangent;
+                fixedKeys[i].inTangent = keys[i].inTangent;
                 fixedKeys[i].outTangent = keys[i].outTangent;
                 fixedKeys[i].tangentMode = hasTanFlags[i] ? 1 : 0;
             }
@@ -659,7 +659,7 @@ namespace KSP_EngineAnalyzer
                             }
                         }
                     }
-                    endSolidCheck:;
+                endSolidCheck:;
                 }
 
                 float baseMixDensity = 0.005f;
@@ -725,11 +725,11 @@ namespace KSP_EngineAnalyzer
 
                 if (thrustCurve == null || thrustCurve.keys.Length == 0)
                     thrustCurve = new AnimationCurve(new Keyframe(0, 1f), new Keyframe(1, 1f));
-                
+
                 if (isSRB)
                 {
                     float burnTime = 10f;
-                    
+
                     float solidFuelMass = 0f;
                     foreach (PartResource res in ap.partPrefab.Resources)
                     {
@@ -765,12 +765,12 @@ namespace KSP_EngineAnalyzer
                             }
                         }
                     }
-                    
+
                     if (baseMaxThrust > 0 && baseIspVac > 0 && solidFuelMass > 0)
                     {
                         burnTime = solidFuelMass / (baseMaxThrust / (baseIspVac * 9.80665f));
                     }
-                    
+
                     float step = 0.01f;
                     float avgThrustRatio = 0f;
                     int sampleCount = 0;
@@ -793,11 +793,11 @@ namespace KSP_EngineAnalyzer
                     }
                 }
 
-                EnginePartGroup group = new EnginePartGroup 
-                { 
-                    part = ap, 
-                    partTitle = Localizer.Format(ap.title), 
-                    isJet = isJet, 
+                EnginePartGroup group = new EnginePartGroup
+                {
+                    part = ap,
+                    partTitle = Localizer.Format(ap.title),
+                    isJet = isJet,
                     isSRB = isSRB,
                     isHidden = !IsPartVisible(ap),
                     engineSize = GetEngineSize(ap),
@@ -922,7 +922,7 @@ namespace KSP_EngineAnalyzer
                         var atmEngine = FindEngineModule(ap);
                         float cfgIV = atmEngine != null ? atmEngine.atmosphereCurve.Evaluate(0f) : baseIspVac;
                         float cfgIA = atmEngine != null ? atmEngine.atmosphereCurve.Evaluate(1f) : baseIspASL;
-                        
+
                         ConfigNode curve = cfg.GetNode("atmosphereCurve");
                         if (curve != null)
                         {
@@ -935,12 +935,12 @@ namespace KSP_EngineAnalyzer
                                 }
                             }
                         }
-                        
+
                         AnimationCurve cfgThrustCurve = null;
                         float cfgTotalImpulse = 0f;
                         float cfgAvgThrust = cfgT;
                         float cfgBurnTime = 10f;
-                        
+
                         if (isSRB)
                         {
                             ConfigNode targetCurveNode = null;
@@ -1036,7 +1036,7 @@ namespace KSP_EngineAnalyzer
                                     }
                                 }
                             }
-                            
+
                             if (solidFuelMass <= 0)
                             {
                                 foreach (PartResource res in ap.partPrefab.Resources)
@@ -1044,8 +1044,8 @@ namespace KSP_EngineAnalyzer
                                     if (res == null || res.resourceName == null) continue;
                                     string rn = res.resourceName;
                                     if (solidPropellants.Any(f => rn == f || rn.ToLower().Contains(f.ToLower())))
-                                     {
-                                         var resDef = PartResourceLibrary.Instance.GetDefinition(rn);
+                                    {
+                                        var resDef = PartResourceLibrary.Instance.GetDefinition(rn);
                                         if (resDef != null)
                                         {
                                             solidFuelMass += (float)(res.maxAmount * resDef.density);
@@ -1082,12 +1082,12 @@ namespace KSP_EngineAnalyzer
                             {
                                 fuelFlow = explicitFuelFlow;
                             }
-                            
+
                             if (fuelFlow > 0 && solidFuelMass > 0)
                             {
                                 cfgBurnTime = solidFuelMass / fuelFlow;
                             }
-                            
+
                             float step = 0.01f;
                             float avgThrustRatio = 0f;
                             int sampleCount = 0;
@@ -1109,7 +1109,7 @@ namespace KSP_EngineAnalyzer
                                 cfgAvgThrust = cfgT;
                             }
                         }
-                        
+
                         string configBurnTimeStr = isSRB ? cfgBurnTime.ToString("F0") + "s" : baseBurnTime;
                         var config = CalculateConfig(cfgName, cfgT, cfgIV, cfgIA, baseMixDensity, baseFuels, baseUllage, baseIgnitions, configBurnTimeStr, ap, engineCount, isHP, isSRB ? cfgAvgThrust : 0f, isSRB ? solidFuelMass : -1f);
                         config.thrustCurve = cfgThrustCurve;
@@ -1119,7 +1119,7 @@ namespace KSP_EngineAnalyzer
                         group.configs.Add(config);
                     }
                 }
-                else 
+                else
                 {
                     float useAvgThrust = isSRB && avgThrust > 0f ? avgThrust : 0f;
 
@@ -1198,7 +1198,7 @@ namespace KSP_EngineAnalyzer
         private EngineConfig CalculateConfig(string name, float T, float IV, float IA, float dens, List<string> f, string ull, string ign, string bt, AvailablePart ap, int cnt, bool isHP, float avgThrust = 0f, float preFuelMass = -1f)
         {
             const float g0 = 9.80665f;
-            
+
             float effectiveT = avgThrust > 0f ? avgThrust : T;
             float isp, thrust;
             if (isVacMode)
@@ -1211,7 +1211,7 @@ namespace KSP_EngineAnalyzer
                 isp = IA;
                 thrust = effectiveT * (IA / Math.Max(IV, 0.01f)) * cnt;
             }
-            
+
             float dry = vesselMassAtSync + (ap.partPrefab.mass * cnt);
             float dV = 0, twr = 0, vol = 0, wet = 0;
             bool meet = true;
@@ -1239,24 +1239,24 @@ namespace KSP_EngineAnalyzer
                             fMass += (float)(res.maxAmount * resDef.density);
                     }
                 }
-                wet = dry + (fMass * cnt); 
+                wet = dry + (fMass * cnt);
                 vol = (fMass * cnt / dens) / 1000f;
                 if (dry > 0) dV = isp * g0 * Mathf.Log(wet / dry);
                 twr = thrust / (wet * g0);
             }
             else if (isSmartMode)
             {
-                float R = Mathf.Exp(targetDV / (isp * g0)); 
-                wet = dry * R; 
+                float R = Mathf.Exp(targetDV / (isp * g0));
+                wet = dry * R;
                 vol = ((wet - dry) / dens) / 1000f;
-                twr = thrust / (wet * g0); 
-                if (twr < targetTWR) meet = false; 
+                twr = thrust / (wet * g0);
+                if (twr < targetTWR) meet = false;
                 dV = targetDV;
             }
             else
             {
-                float fMass = (targetVolumeKL * 1000f) * dens; 
-                wet = dry + fMass; 
+                float fMass = (targetVolumeKL * 1000f) * dens;
+                wet = dry + fMass;
                 vol = targetVolumeKL;
                 if (dry > 0) dV = isp * g0 * Mathf.Log(wet / dry);
                 twr = thrust / (wet * g0);
@@ -1272,7 +1272,7 @@ namespace KSP_EngineAnalyzer
                 RefreshData();
                 if (allGroupsCache.Count == 0) return;
             }
-            
+
             isSciFiMode = ispLimit >= SCIFI_THRESHOLD;
             filteredGroups.Clear();
             foreach (var g in allGroupsCache)
@@ -1323,10 +1323,10 @@ namespace KSP_EngineAnalyzer
             GUI.skin = HighLogic.Skin;
             windowRect.width = isCompactMode ? 450 : 850;
             windowRect.height = 680f;
-            windowRect = GUILayout.Window(888, windowRect, DrawWindow, L("引擎全效分析器 v1.0.0", "Engine Analyzer v1.0.0"));
+            windowRect = GUILayout.Window(888, windowRect, DrawWindow, L("引擎全效分析器 v2.0.0", "Engine Analyzer v2.0.0"));
             windowRect.width = isCompactMode ? 450f : 850f;
             windowRect.height = 680f;
-            
+
             if (showDetailPanel && selectedEngine != null)
             {
                 float targetWidth = isCompactMode ? 450 : 850;
@@ -1422,10 +1422,10 @@ namespace KSP_EngineAnalyzer
                 GUILayout.EndHorizontal();
 
                 // Fuel filter commented out due to instability
-            // GUILayout.BeginHorizontal();
-            // GUILayout.Label(L("燃料:", "Fuel:"), GUILayout.Width(40));
-            // ... fuel filter buttons ...
-            // GUILayout.EndHorizontal();
+                // GUILayout.BeginHorizontal();
+                // GUILayout.Label(L("燃料:", "Fuel:"), GUILayout.Width(40));
+                // ... fuel filter buttons ...
+                // GUILayout.EndHorizontal();
             }
             else
             {
@@ -1645,8 +1645,8 @@ namespace KSP_EngineAnalyzer
 
             if (selectedEngine.isSRB)
             {
-                float baseThrust   = selectedEngine.baseThrust;
-                float grainThrust  = (_grainPresets.Count > 0 && _selectedGrainIndex < _grainPresets.Count)
+                float baseThrust = selectedEngine.baseThrust;
+                float grainThrust = (_grainPresets.Count > 0 && _selectedGrainIndex < _grainPresets.Count)
                     ? baseThrust * _grainPresets[_selectedGrainIndex].thrustMultiplier
                     : selectedConfig.avgThrust > 0f ? selectedConfig.avgThrust : baseThrust;
                 float displayThrust = grainThrust;
@@ -2105,7 +2105,8 @@ namespace KSP_EngineAnalyzer
                         result.Add(new BetterSRBGrain
                         {
                             displayName = L($"默认 ({baseThrust:F0} kN)", $"Default ({baseThrust:F0} kN)"),
-                            curve = fallbackCurve, thrustMultiplier = 1f
+                            curve = fallbackCurve,
+                            thrustMultiplier = 1f
                         });
                     for (int i = 1; i <= 20; i++)
                     {
@@ -2160,7 +2161,7 @@ namespace KSP_EngineAnalyzer
             var fixedKeys = c.keys;
             for (int i = 0; i < keys.Length; i++)
             {
-                fixedKeys[i].inTangent  = keys[i].inTangent;
+                fixedKeys[i].inTangent = keys[i].inTangent;
                 fixedKeys[i].outTangent = keys[i].outTangent;
                 fixedKeys[i].tangentMode = 0;
             }
@@ -2220,38 +2221,38 @@ namespace KSP_EngineAnalyzer
             {
                 var field = obj.GetType().GetField(fieldName);
                 if (field != null) return (float)field.GetValue(obj);
-                
+
                 var property = obj.GetType().GetProperty(fieldName);
                 if (property != null) return (float)property.GetValue(obj);
             }
             catch { }
-            
+
             return 0f;
         }
 
         private float GetBurnTime(EnginePartGroup engine)
         {
             float burnTime = 0f;
-            
+
             try
             {
                 var engineMod = FindEngineModule(engine.part);
                 if (engineMod != null && engineMod.maxFuelFlow > 0)
                 {
                     float solidFuelMass = 0f;
-                    
+
                     foreach (var prop in engineMod.propellants)
                     {
                         if (prop != null && prop.name != null &&
                             (prop.name == "SolidFuel" || prop.name.ToLower().Contains("solid")))
                         {
                             float maxAmount = GetFieldValue(prop, "maxAmount");
-                            
+
                             if (maxAmount <= 0)
                             {
                                 foreach (PartResource res in engine.part.partPrefab.Resources)
                                 {
-                                    if (res != null && res.resourceName != null && 
+                                    if (res != null && res.resourceName != null &&
                                         res.resourceName.Equals(prop.name, StringComparison.OrdinalIgnoreCase))
                                     {
                                         maxAmount = (float)res.maxAmount;
@@ -2259,7 +2260,7 @@ namespace KSP_EngineAnalyzer
                                     }
                                 }
                             }
-                            
+
                             if (maxAmount > 0)
                             {
                                 var resDef = PartResourceLibrary.Instance.GetDefinition(prop.name);
@@ -2271,18 +2272,18 @@ namespace KSP_EngineAnalyzer
                             }
                         }
                     }
-                    
+
                     if (solidFuelMass > 0)
                     {
                         burnTime = solidFuelMass / engineMod.maxFuelFlow;
                     }
                 }
             }
-            catch (Exception ex) 
+            catch (Exception ex)
             {
                 Debug.LogError($"EngineAnalyzer: GetBurnTime error: {ex.Message}");
             }
-            
+
             return burnTime > 0 ? burnTime : 150f;
         }
 
@@ -2418,7 +2419,7 @@ namespace KSP_EngineAnalyzer
                 this.filterDeprecated = oldWindow.filterDeprecated;
                 this.filterNonRO = oldWindow.filterNonRO;
                 this.isEnglish = oldWindow.isEnglish;
-                
+
                 RefreshData();
             }
         }
