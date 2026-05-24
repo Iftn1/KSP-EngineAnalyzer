@@ -297,7 +297,8 @@ namespace KSP_EngineAnalyzer
             var keyValues = curveNode.GetValues("key");
             if (keyValues == null || keyValues.Length == 0) return null;
 
-            var keys = new List<Keyframe>();
+            var rawKeys = new List<Keyframe>();
+            var rawHasTan = new List<bool>();
             foreach (var kv in keyValues)
             {
                 var parts = kv.Split(new char[] { ' ', ',', '\t' }, StringSplitOptions.RemoveEmptyEntries);
@@ -308,6 +309,7 @@ namespace KSP_EngineAnalyzer
                         System.Globalization.CultureInfo.InvariantCulture, out float value)) continue;
 
                 Keyframe kf;
+                bool hasTan = false;
                 if (parts.Length >= 4 &&
                     float.TryParse(parts[2], System.Globalization.NumberStyles.Float,
                         System.Globalization.CultureInfo.InvariantCulture, out float inTan) &&
@@ -315,24 +317,32 @@ namespace KSP_EngineAnalyzer
                         System.Globalization.CultureInfo.InvariantCulture, out float outTan))
                 {
                     kf = new Keyframe(time, value, inTan, outTan);
+                    hasTan = true;
                 }
                 else
                 {
                     kf = new Keyframe(time, value);
                 }
-                keys.Add(kf);
+                rawKeys.Add(kf);
+                rawHasTan.Add(hasTan);
             }
 
-            if (keys.Count == 0) return null;
+            if (rawKeys.Count == 0) return null;
 
-            var curve = new AnimationCurve(keys.ToArray());
+            var sorted = rawKeys.Select((k, i) => new { kf = k, idx = i })
+                                .OrderBy(x => x.kf.time)
+                                .ToList();
+
+            var keys = sorted.Select(x => x.kf).ToArray();
+            var hasTanFlags = sorted.Select(x => rawHasTan[x.idx]).ToArray();
+
+            var curve = new AnimationCurve(keys);
             var fixedKeys = curve.keys;
             for (int i = 0; i < fixedKeys.Length; i++)
             {
-                var orig = keys[i];
-                fixedKeys[i].inTangent  = orig.inTangent;
-                fixedKeys[i].outTangent = orig.outTangent;
-                fixedKeys[i].tangentMode = 0;
+                fixedKeys[i].inTangent  = keys[i].inTangent;
+                fixedKeys[i].outTangent = keys[i].outTangent;
+                fixedKeys[i].tangentMode = hasTanFlags[i] ? 1 : 0;
             }
             for (int i = 0; i < fixedKeys.Length; i++)
                 curve.MoveKey(i, fixedKeys[i]);
@@ -547,6 +557,7 @@ namespace KSP_EngineAnalyzer
             float totalLiters = 0f;
             foreach (Part p in EditorLogic.fetch.ship.Parts)
             {
+                if (IsSolidRocketPart(p)) continue;
                 foreach (PartModule pm in p.Modules)
                 {
                     if (pm.moduleName == "ModuleFuelTanks" || pm.moduleName == "ModuleTankService")
@@ -558,6 +569,20 @@ namespace KSP_EngineAnalyzer
                 }
             }
             return totalLiters / 1000f;
+        }
+
+        private bool IsSolidRocketPart(Part p)
+        {
+            if (p?.partInfo?.partPrefab == null) return false;
+            var eng = p.partInfo.partPrefab.FindModuleImplementing<ModuleEngines>();
+            if (eng == null) return false;
+            foreach (var prop in eng.propellants)
+            {
+                string pn = prop.name;
+                if (solidPropellants.Any(s => pn == s || pn.ToLower().Contains(s.ToLower())))
+                    return true;
+            }
+            return false;
         }
 
         private void SyncCurrentStage()
