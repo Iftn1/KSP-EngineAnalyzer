@@ -809,21 +809,71 @@ namespace KSP_EngineAnalyzer
                 }
                 else if (isSRB)
                 {
-                    string engType = ap.partConfig?.GetValue("engineType") ?? "";
-                    if (!string.IsNullOrEmpty(engType))
+                    PartModule mecPartModule = null;
+                    foreach (PartModule pm in ap.partPrefab.Modules)
                     {
-                        foreach (UrlDir.UrlConfig urlCfg in GameDatabase.Instance.GetConfigs("PART"))
+                        if (pm.moduleName == "ModuleEngineConfigs") { mecPartModule = pm; break; }
+                    }
+
+                    if (mecPartModule != null)
+                    {
+                        var mecType = mecPartModule.GetType();
+                        var configsField = mecType.GetField("configs", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+                        if (configsField != null)
                         {
-                            if (urlCfg.config.HasValue("engineType") && urlCfg.config.GetValue("engineType") == engType)
+                            var rawConfigs = configsField.GetValue(mecPartModule);
+                            if (rawConfigs is ConfigNode[] cfgArray && cfgArray.Length > 0)
                             {
-                                ConfigNode gdbMec = urlCfg.config.GetNode("MODULE", "name", "ModuleEngineConfigs");
-                                if (gdbMec != null)
+                                allConfigs = cfgArray;
+                                Debug.Log($"[EngineAnalyzer] PART={ap.title} got {allConfigs.Length} CONFIGs via reflection (configs array)");
+                            }
+                            else if (rawConfigs is System.Collections.Generic.List<ConfigNode> cfgList && cfgList.Count > 0)
+                            {
+                                allConfigs = cfgList.ToArray();
+                                Debug.Log($"[EngineAnalyzer] PART={ap.title} got {allConfigs.Length} CONFIGs via reflection (configs list)");
+                            }
+                        }
+
+                        if (allConfigs == null)
+                        {
+                            foreach (var f in mecType.GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic))
+                            {
+                                bool isConfigArray = f.FieldType == typeof(ConfigNode[]);
+                                bool isConfigList = f.FieldType == typeof(System.Collections.Generic.List<ConfigNode>);
+                                if ((isConfigArray || isConfigList) && f.Name.ToLower().Contains("config"))
                                 {
-                                    allConfigs = gdbMec.GetNodes("CONFIG");
-                                    if (allConfigs.Length > 0) break;
+                                    if (isConfigArray)
+                                    {
+                                        var arr = f.GetValue(mecPartModule) as ConfigNode[];
+                                        if (arr != null && arr.Length > 0) { allConfigs = arr; }
+                                    }
+                                    else
+                                    {
+                                        var list = f.GetValue(mecPartModule) as System.Collections.Generic.List<ConfigNode>;
+                                        if (list != null && list.Count > 0) { allConfigs = list.ToArray(); }
+                                    }
+                                    if (allConfigs != null)
+                                    {
+                                        Debug.Log($"[EngineAnalyzer] PART={ap.title} got {allConfigs.Length} CONFIGs via reflection (field={f.Name})");
+                                        break;
+                                    }
                                 }
                             }
                         }
+
+                        if (allConfigs == null)
+                        {
+                            Debug.Log($"[EngineAnalyzer] PART={ap.title} ModuleEngineConfigs found but no ConfigNode[] field detected");
+                            var mecType2 = mecPartModule.GetType();
+                            foreach (var f in mecType2.GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic))
+                            {
+                                Debug.Log($"[EngineAnalyzer]   field: {f.Name} = {f.FieldType}");
+                            }
+                        }
+                    }
+                    else
+                    {
+                        Debug.Log($"[EngineAnalyzer] PART={ap.title} no ModuleEngineConfigs in partPrefab.Modules");
                     }
                 }
 
@@ -1249,12 +1299,16 @@ namespace KSP_EngineAnalyzer
             windowRect.width = isCompactMode ? 450 : 850;
             windowRect.height = 680f;
             windowRect = GUILayout.Window(888, windowRect, DrawWindow, L("引擎全效分析器 v1.0.0", "Engine Analyzer v1.0.0"));
+            windowRect.width = isCompactMode ? 450f : 850f;
+            windowRect.height = 680f;
             
             if (showDetailPanel && selectedEngine != null)
             {
                 float targetWidth = isCompactMode ? 450 : 850;
-                detailWindowRect = new Rect(detailWindowRect.x, detailWindowRect.y, targetWidth, isCompactMode ? 650f : 750f);
+                detailWindowRect = new Rect(detailWindowRect.x, detailWindowRect.y, targetWidth, isCompactMode ? 800f : 950f);
                 detailWindowRect = GUI.Window(12345, detailWindowRect, DrawDetailPanel, L("引擎详情", "Engine Details"));
+                detailWindowRect.width = targetWidth;
+                detailWindowRect.height = isCompactMode ? 800f : 950f;
             }
         }
 
@@ -1432,9 +1486,9 @@ namespace KSP_EngineAnalyzer
                     if (isCompactMode)
                     {
                         string impStr = cfg.totalImpulse > 0 ? $" Imp:{cfg.totalImpulse:F0}kN·s" : "";
-                        GUILayout.Label($"{hpDisplay}<size=12><color=#E0E0E0>{cfg.configName}</color></size>", GUILayout.Width(180));
+                        GUILayout.Label($"{hpDisplay}<size=12><color=#E0E0E0>{cfg.configName}</color></size>", GUILayout.Width(160));
                         GUILayout.FlexibleSpace();
-                        GUILayout.Label($"Δv:{cfg.deltaV:F0} TWR:{cfg.twr:F2}{impStr}");
+                        GUILayout.Label($"Δv:{cfg.deltaV:F0} TWR:{cfg.twr:F2} Isp:{cfg.ispVac:F0}{impStr}");
                         if (GUILayout.Button(L("选", "Sel"), GUILayout.Width(35))) SpawnAndConfigure(group.part, cfg.configName);
                     }
                     else
@@ -1450,10 +1504,11 @@ namespace KSP_EngineAnalyzer
                     {
                         GUILayout.BeginHorizontal();
                         GUILayout.Label($"Δv: <color=lime>{cfg.deltaV:F0}</color>", GUILayout.Width(80));
-                        GUILayout.Label($"TWR: {cfg.twr:F2}", GUILayout.Width(70));
-                        GUILayout.Label($"Isp: {cfg.ispVac:F0}", GUILayout.Width(70));
+                        GUILayout.Label($"TWR: {cfg.twr:F2}", GUILayout.Width(80));
+                        GUILayout.Label($"Isp: {cfg.ispVac:F0}", GUILayout.Width(85));
                         if (cfg.totalImpulse > 0)
-                            GUILayout.Label($"Imp: <color=orange>{cfg.totalImpulse:F0}</color>", GUILayout.Width(80));
+                            GUILayout.Label($"Imp: <color=orange>{cfg.totalImpulse:F0}</color>", GUILayout.Width(85));
+                        GUILayout.Space(15);
                         GUILayout.Label(isSmartMode ? $"{cfg.displayVolume:F1}kL" : $"{cfg.displayWetMass:F1}t");
                         GUILayout.Label($"$: <color=yellow>{cfg.price:F0}</color>");
                         GUILayout.EndHorizontal();
@@ -1477,7 +1532,7 @@ namespace KSP_EngineAnalyzer
         {
             float panelWidth = isCompactMode ? 450 : 850;
             detailWindowRect.width = panelWidth;
-            detailWindowRect.height = isCompactMode ? 650f : 750f;
+            detailWindowRect.height = isCompactMode ? 800f : 950f;
 
             GUILayout.BeginVertical(GUILayout.Width(panelWidth));
             GUILayout.Label($"<size=16><b>{selectedEngine.partTitle}</b></size>", GUILayout.Height(35));
