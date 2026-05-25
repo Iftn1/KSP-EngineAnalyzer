@@ -59,6 +59,7 @@ namespace KSP_EngineAnalyzer
         private EnginePartGroup selectedEngine = null;
         private int selectedConfigIndex = 0;
         private bool showDetailPanel = false;
+        private bool _detailPanelJustOpened = false;
         private Rect detailWindowRect = new Rect(700, 150, 850, 950);
 
         // BetterSRB 药柱预设
@@ -1361,10 +1362,16 @@ namespace KSP_EngineAnalyzer
             if (showDetailPanel && selectedEngine != null)
             {
                 float targetWidth = isCompactMode ? 450 : 850;
-                detailWindowRect = new Rect(detailWindowRect.x, detailWindowRect.y, targetWidth, isCompactMode ? 800f : 950f);
+                if (_detailPanelJustOpened)
+                {
+                    detailWindowRect = new Rect(windowRect.x + windowRect.width + 20f, windowRect.y, targetWidth, isCompactMode ? 800f : 950f);
+                    _detailPanelJustOpened = false;
+                }
+                else
+                {
+                    detailWindowRect = new Rect(detailWindowRect.x, detailWindowRect.y, targetWidth, isCompactMode ? 800f : 950f);
+                }
                 detailWindowRect = GUI.Window(12345, detailWindowRect, DrawDetailPanel, L("#engineAnalyzer_EngineDetails"));
-                detailWindowRect.width = targetWidth;
-                detailWindowRect.height = isCompactMode ? 800f : 950f;
             }
         }
 
@@ -1533,7 +1540,7 @@ namespace KSP_EngineAnalyzer
                 string hiddenLabel = group.isHidden ? L("#engineAnalyzer_HiddenTag") : "";
                 string sizeLabel = $" ({group.engineSize})";
                 GUILayout.Label($"<size=15>{typeLabel}<b>{group.partTitle}</b>{hiddenLabel}{sizeLabel}{(engineCount > 1 ? $" x{engineCount}" : "")}</size>");
-                if (GUILayout.Button(L("#engineAnalyzer_Detail"), GUILayout.Width(60))) { selectedEngine = group; showDetailPanel = true; _grainPresets.Clear(); _selectedGrainIndex = 0; _cachedChartRect = Rect.zero; }
+                if (GUILayout.Button(L("#engineAnalyzer_Detail"), GUILayout.Width(60))) { selectedEngine = group; showDetailPanel = true; _detailPanelJustOpened = true; _grainPresets.Clear(); _selectedGrainIndex = 0; _cachedChartRect = Rect.zero; }
                 GUILayout.EndHorizontal();
 
                 for (int i = 0; i < group.configs.Count; i++)
