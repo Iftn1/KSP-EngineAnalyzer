@@ -1363,14 +1363,16 @@ namespace KSP_EngineAnalyzer
                 float targetWidth = isCompactMode ? 450 : 850;
                 detailWindowRect = new Rect(detailWindowRect.x, detailWindowRect.y, targetWidth, isCompactMode ? 800f : 950f);
                 detailWindowRect = GUI.Window(12345, detailWindowRect, DrawDetailPanel, L("#engineAnalyzer_EngineDetails"));
+                detailWindowRect.width = targetWidth;
+                detailWindowRect.height = isCompactMode ? 800f : 950f;
             }
         }
 
         private void DrawWindow(int id)
         {
-            float fixedWinW = windowRect.width;
+            float panelWidth = isCompactMode ? 450f : 850f;
 
-            GUILayout.BeginVertical(GUILayout.Width(fixedWinW));
+            GUILayout.BeginVertical(GUILayout.Width(panelWidth));
 
             GUILayout.BeginHorizontal();
             if (GUILayout.Button(isVacMode ? L("#engineAnalyzer_VacuumMode") : L("#engineAnalyzer_SeaLevelMode"))) { isVacMode = !isVacMode; RefreshData(); }
@@ -1522,7 +1524,7 @@ namespace KSP_EngineAnalyzer
 
             GUILayout.EndVertical(); // 闭合过滤器框
 
-            scrollPosition = GUILayout.BeginScrollView(scrollPosition, GUILayout.Width(fixedWinW - 20), GUILayout.Height(360f));
+            scrollPosition = GUILayout.BeginScrollView(scrollPosition, GUILayout.Width(panelWidth - 20), GUILayout.Height(360f));
             foreach (var group in filteredGroups)
             {
                 GUILayout.BeginVertical(GUI.skin.box);
