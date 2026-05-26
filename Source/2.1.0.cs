@@ -1298,7 +1298,7 @@ namespace KSP_EngineAnalyzer
                 twr = thrust / (wet * g0);
             }
 
-            return new EngineConfig { configName = name, deltaV = dV, twr = twr, ispVac = IV, ispASL = IA, price = ap.cost * cnt, displayWetMass = wet, displayVolume = vol, fuelInfo = string.Join("/", f), ullageInfo = ull, ignitionsDisplay = ign, burnTimeDisplay = bt, meetsSmartCriteria = meet, needsHighPressure = isHP };
+            return new EngineConfig { configName = name, deltaV = dV, twr = twr, ispVac = IV, ispASL = IA, price = ap.cost * cnt, displayWetMass = wet, displayVolume = vol, fuelInfo = string.Join("/", f), ullageInfo = ull, ignitionsDisplay = ign, burnTimeDisplay = bt, meetsSmartCriteria = meet, needsHighPressure = isHP, maxThrust = T * cnt };
         }
 
         private void ApplyFilters()
@@ -1361,17 +1361,17 @@ namespace KSP_EngineAnalyzer
 
             if (showDetailPanel && selectedEngine != null)
             {
-                float targetWidth = isCompactMode ? 450 : 850;
+                detailWindowRect.width = isCompactMode ? 450f : 850f;
+                detailWindowRect.height = isCompactMode ? 800f : 950f;
+
                 if (_detailPanelJustOpened)
                 {
-                    detailWindowRect = new Rect(windowRect.x + windowRect.width + 20f, windowRect.y, targetWidth, isCompactMode ? 800f : 950f);
+                    detailWindowRect.x = windowRect.x + windowRect.width + 20f;
+                    detailWindowRect.y = windowRect.y;
                     _detailPanelJustOpened = false;
                 }
-                else
-                {
-                    detailWindowRect = new Rect(detailWindowRect.x, detailWindowRect.y, targetWidth, isCompactMode ? 800f : 950f);
-                }
-                detailWindowRect = GUI.Window(12345, detailWindowRect, DrawDetailPanel, L("#engineAnalyzer_EngineDetails"));
+
+                detailWindowRect = GUILayout.Window(12345, detailWindowRect, DrawDetailPanel, L("#engineAnalyzer_EngineDetails"));
             }
         }
 
@@ -1514,12 +1514,10 @@ namespace KSP_EngineAnalyzer
             if (isSmartMode)
             {
                 GUILayout.BeginHorizontal();
-                GUILayout.Label(L("#engineAnalyzer_TargetDV"), GUILayout.Width(60));
-                targetDVInput = GUILayout.TextField(targetDVInput, GUILayout.Width(50));
+                GUILayout.Label(L("#engineAnalyzer_TargetDV"), GUILayout.Width(80));
+                targetDVInput = GUILayout.TextField(targetDVInput, GUILayout.Width(80));
                 if (float.TryParse(targetDVInput, out float d)) targetDV = d;
-                GUILayout.Label(L("#engineAnalyzer_TargetMinTWR"), GUILayout.Width(60));
-                targetTWRInput = GUILayout.TextField(targetTWRInput, GUILayout.Width(40));
-                if (float.TryParse(targetTWRInput, out float t)) targetTWR = t;
+                GUILayout.FlexibleSpace();
                 GUILayout.EndHorizontal();
             }
 
@@ -1609,12 +1607,20 @@ namespace KSP_EngineAnalyzer
 
         private void DrawDetailPanel(int windowID)
         {
-            float panelWidth = isCompactMode ? 450 : 850;
+            if (selectedEngine == null || selectedEngine.configs.Count == 0)
+            {
+                GUILayout.Label("No engine data");
+                if (GUILayout.Button("Close")) { showDetailPanel = false; selectedEngine = null; }
+                GUI.DragWindow();
+                return;
+            }
 
+            float panelWidth = isCompactMode ? 450f : 850f;
             GUILayout.BeginVertical(GUILayout.Width(panelWidth));
-            GUILayout.Label($"<size=16><b>{selectedEngine.partTitle}</b></size>", GUILayout.Height(35));
 
-            // 配置/药柱选择器
+            GUILayout.Label($"<size=16><b>{selectedEngine.partTitle}</b></size>");
+            GUILayout.Space(5f);
+
             bool hasConfigs = selectedEngine.configs.Count > 1;
             bool hasGrains = false;
             if (selectedEngine.isSRB)
@@ -1626,348 +1632,115 @@ namespace KSP_EngineAnalyzer
 
             if (hasGrains)
             {
-                GUILayout.BeginHorizontal();
                 GUILayout.Label("<b>" + L("#engineAnalyzer_ThrustVariants") + "</b>");
-                GUILayout.FlexibleSpace();
-                if (GUILayout.Button(L("#engineAnalyzer_ReadGrain"), GUILayout.Width(160)))
-                {
-                    var eng = FindEngineModule(selectedEngine.part);
-                    if (eng != null && eng.useThrustCurve && eng.thrustCurve != null)
-                    {
-                        var fresh = FloatCurveToAnimationCurve(eng.thrustCurve);
-                        if (fresh != null && fresh.keys.Length >= 2)
-                        {
-                            if (_selectedGrainIndex < _grainPresets.Count)
-                                _grainPresets[_selectedGrainIndex] = new BetterSRBGrain
-                                {
-                                    displayName = _grainPresets[_selectedGrainIndex].displayName,
-                                    curve = fresh,
-                                    thrustMultiplier = _grainPresets[_selectedGrainIndex].thrustMultiplier
-                                };
-                            _cachedChartRect = Rect.zero;
-                        }
-                    }
-                }
-                GUILayout.EndHorizontal();
-
-                bool allSameCurve = _grainPresets.Count > 1 &&
-                    _grainPresets.All(g => ReferenceEquals(g.curve, _grainPresets[0].curve));
-                if (allSameCurve)
-                    GUILayout.Label(
-                        L("#engineAnalyzer_GrainHint"));
-
                 var grainNames = _grainPresets.Select(g => g.displayName.Replace("\n", "").Replace("\r", "")).ToArray();
-                int cols = Mathf.Min(grainNames.Length, 4);
-                int newGrain = GUILayout.SelectionGrid(_selectedGrainIndex, grainNames, cols);
-                if (newGrain != _selectedGrainIndex)
-                {
-                    _selectedGrainIndex = newGrain;
-                    selectedConfigIndex = Mathf.Min(newGrain, selectedEngine.configs.Count - 1);
-                    _cachedChartRect = Rect.zero;
-                }
-                GUILayout.Space(5);
+                selectedConfigIndex = GUILayout.SelectionGrid(selectedConfigIndex, grainNames, isCompactMode ? 2 : 4);
+                if (selectedConfigIndex >= selectedEngine.configs.Count)
+                    selectedConfigIndex = Mathf.Min(selectedConfigIndex, selectedEngine.configs.Count - 1);
             }
             else if (hasConfigs)
             {
                 GUILayout.Label("<b>" + L("#engineAnalyzer_Configuration") + "</b>");
                 var configNames = selectedEngine.configs.Select(c => c.configName).ToArray();
-                int cols = Mathf.Min(configNames.Length, 4);
-                int newIndex = GUILayout.SelectionGrid(selectedConfigIndex, configNames, cols);
-                if (newIndex != selectedConfigIndex)
-                {
-                    selectedConfigIndex = newIndex;
-                    _cachedChartRect = Rect.zero;
-                }
-                GUILayout.Space(5);
+                selectedConfigIndex = GUILayout.SelectionGrid(selectedConfigIndex, configNames, isCompactMode ? 2 : 4);
             }
             else
             {
                 selectedConfigIndex = 0;
             }
 
-            var selectedConfig = selectedEngine.configs[Mathf.Clamp(selectedConfigIndex, 0, selectedEngine.configs.Count - 1)];
+            if (selectedConfigIndex < 0 || selectedConfigIndex >= selectedEngine.configs.Count)
+                selectedConfigIndex = 0;
 
+            var cfg = selectedEngine.configs[selectedConfigIndex];
+
+            GUILayout.Space(5f);
+
+            GUILayout.BeginVertical(GUI.skin.box);
             GUILayout.Label(L("#engineAnalyzer_Manufacturer") + " " + (string.IsNullOrEmpty(selectedEngine.manufacturer) ? L("#engineAnalyzer_Unknown") : selectedEngine.manufacturer));
-             GUILayout.Label(L("#engineAnalyzer_Size") + " " + selectedEngine.engineSize);
-             GUILayout.Label(L("#engineAnalyzer_Type") + " " + (selectedEngine.isJet ? L("#engineAnalyzer_JetEngine") : (selectedEngine.isSRB ? L("#engineAnalyzer_SolidBooster") : L("#engineAnalyzer_LiquidRocket"))));
-            GUILayout.Label(L("#engineAnalyzer_FuelType") + " " + GetFuelTypeName(selectedEngine.fuelType));
+            GUILayout.Label(L("#engineAnalyzer_Size") + " " + selectedEngine.engineSize);
+            GUILayout.Label(L("#engineAnalyzer_Type") + " " + (selectedEngine.isJet ? L("#engineAnalyzer_JetEngine") : (selectedEngine.isSRB ? L("#engineAnalyzer_SolidBooster") : L("#engineAnalyzer_LiquidRocket"))));
+            GUILayout.Label(L("#engineAnalyzer_FuelType") + " " + (string.IsNullOrEmpty(cfg.fuelInfo) ? GetFuelTypeName(selectedEngine.fuelType) : cfg.fuelInfo));
+            GUILayout.EndVertical();
 
-            GUILayout.Space(8);
+            GUILayout.Space(8f);
+
+            GUILayout.BeginVertical(GUI.skin.box);
+            GUILayout.Label($"<b>{L("#engineAnalyzer_Specs")}</b>");
+            GUILayout.Label($"{L("#engineAnalyzer_Thrust")}: {cfg.maxThrust:F1} kN");
+            GUILayout.Label($"Isp (Vac): {cfg.ispVac:F0}s | Isp (ASL): {cfg.ispASL:F0}s");
+            GUILayout.Label($"TWR: {cfg.twr:F2} | {L("#engineAnalyzer_Price")}: {cfg.price:F0}");
+            if (selectedEngine.isSRB)
+            {
+                GUILayout.Label($"{L("#engineAnalyzer_TotalImp")}: {cfg.totalImpulse:F0} kN·s | {L("#engineAnalyzer_AvgThrust")}: {cfg.avgThrust:F1} kN");
+                GUILayout.Label($"{L("#engineAnalyzer_BurnTimeStr")}: {cfg.burnTime:F1} s");
+            }
+            GUILayout.EndVertical();
 
             if (selectedEngine.isSRB)
             {
-                float baseThrust = selectedEngine.baseThrust;
-                float grainThrust = (_grainPresets.Count > 0 && _selectedGrainIndex < _grainPresets.Count)
-                    ? baseThrust * _grainPresets[_selectedGrainIndex].thrustMultiplier
-                    : selectedConfig.avgThrust > 0f ? selectedConfig.avgThrust : baseThrust;
-                float displayThrust = grainThrust;
-
-                float solidFuelMass = 0f;
-                foreach (PartResource res in selectedEngine.part.partPrefab.Resources)
-                {
-                    if (res == null || res.resourceName == null) continue;
-                    string rn = res.resourceName;
-                    if (solidPropellants.Any(f => rn == f || rn.ToLower().Contains(f.ToLower())))
-                    {
-                        var resDef = PartResourceLibrary.Instance.GetDefinition(rn);
-                        if (resDef != null)
-                            solidFuelMass += (float)(res.maxAmount * resDef.density);
-                    }
-                }
-
-                float burnTime = selectedConfig.burnTime;
-                if (grainThrust > 0 && selectedEngine.baseIspVac > 0 && solidFuelMass > 0
-                    && (burnTime <= 0 || burnTime > 200))
-                {
-                    burnTime = solidFuelMass / (grainThrust / (selectedEngine.baseIspVac * 9.80665f));
-                }
-                if (burnTime <= 0) burnTime = 150f;
-                float displayIspVac = selectedEngine.baseIspVac;
-                float displayIspASL = selectedEngine.baseIspASL;
-                float twrThrust = selectedConfig.avgThrust > 0f ? selectedConfig.avgThrust : baseThrust;
-                float twr = twrThrust / (Math.Max(selectedEngine.part.partPrefab.mass, 0.001f) * 9.81f);
-
-                float displayMass = selectedEngine.part.partPrefab.mass;
-                try
-                {
-                    float resourceMass = 0f;
-                    foreach (PartResource res in selectedEngine.part.partPrefab.Resources)
-                    {
-                        if (res != null && res.maxAmount > 0)
-                        {
-                            var resDef = PartResourceLibrary.Instance.GetDefinition(res.resourceName);
-                            if (resDef != null) resourceMass += (float)(res.maxAmount * resDef.density);
-                        }
-                    }
-                    displayMass += resourceMass;
-                }
-                catch { }
-
-                AnimationCurve displayCurve;
-                if (_grainPresets.Count > 0 && _selectedGrainIndex < _grainPresets.Count)
-                    displayCurve = _grainPresets[_selectedGrainIndex].curve;
-                else
-                    displayCurve = selectedConfig.thrustCurve;
-
-                if (displayCurve == null || displayCurve.keys.Length < 2)
-                    displayCurve = new AnimationCurve(new Keyframe(0, 1f), new Keyframe(1, 1f));
-
-                float curveTimeMax = 1f;
-                if (displayCurve.keys.Length >= 2)
-                {
-                    float firstKey = displayCurve.keys[0].time;
-                    float lastKey = displayCurve.keys[displayCurve.length - 1].time;
-                    curveTimeMax = Mathf.Max(Mathf.Max(firstKey, lastKey), 1f);
-                }
-
-                float displayTotalImpulse = selectedConfig.totalImpulse;
-                float displayAvgThrust = selectedConfig.avgThrust > 0f ? selectedConfig.avgThrust : displayThrust;
-                bool grainChanged = _grainPresets.Count > 0
-                    && _selectedGrainIndex < _grainPresets.Count
-                    && !ReferenceEquals(_grainPresets[_selectedGrainIndex].curve, selectedConfig.thrustCurve);
-                if (grainChanged)
-                {
-                    float curveValMax = 0.001f;
-                    for (float t = 0; t <= 1f; t += 0.01f)
-                    {
-                        float v = displayCurve.Evaluate((1f - t) * curveTimeMax);
-                        if (!float.IsNaN(v) && !float.IsInfinity(v) && v > curveValMax) curveValMax = v;
-                    }
-                    float recalcImpulse = 0f, recalcRatio = 0f;
-                    int recalcCount = 0;
-                    for (float t = 0; t <= 1f; t += 0.01f)
-                    {
-                        float tv = displayCurve.Evaluate((1f - t) * curveTimeMax);
-                        if (float.IsNaN(tv) || float.IsInfinity(tv)) tv = 1f;
-                        tv = Math.Max(0f, tv);
-                        float tvNorm = tv / curveValMax;
-                        recalcRatio += tvNorm;
-                        recalcImpulse += tvNorm * displayThrust * 0.01f * burnTime;
-                        recalcCount++;
-                    }
-                    float recalcAvgRatio = recalcCount > 0 ? recalcRatio / recalcCount : 1f;
-                    displayTotalImpulse = recalcImpulse;
-                    displayAvgThrust = recalcAvgRatio > 0.01f ? recalcImpulse / burnTime : displayThrust;
-                }
-
-                if (isCompactMode)
-                {
-                    GUILayout.BeginVertical(GUI.skin.box);
-                    GUILayout.Label("<b>" + L("#engineAnalyzer_Performance") + "</b>");
-                    GUILayout.Label(L("#engineAnalyzer_RatedThrust") + $" <color=lime>{baseThrust:F0} kN</color>");
-                    if (_grainPresets.Count > 0 && Math.Abs(grainThrust - baseThrust) > 1f)
-                        GUILayout.Label(L("#engineAnalyzer_GrainThrust") + $" <color=#aaffaa>{grainThrust:F0} kN</color>");
-                    GUILayout.Label(L("#engineAnalyzer_VacuumIsp") + $" <color=cyan>{displayIspVac:F0} s</color>");
-                    GUILayout.Label(L("#engineAnalyzer_SeaLevelIsp") + $" <color=orange>{displayIspASL:F0} s</color>");
-                    GUILayout.Label(L("#engineAnalyzer_TWRSelf") + $" <color=yellow>{twr:F2}</color>");
-                    GUILayout.Label(L("#engineAnalyzer_Price") + $" <color=yellow>{selectedEngine.part.cost:F0}</color>");
-                    GUILayout.Label(L("#engineAnalyzer_Mass") + $" {displayMass:F3} t");
-                    GUILayout.EndVertical();
-                    GUILayout.Space(5);
-                    GUILayout.BeginVertical(GUI.skin.box);
-                    GUILayout.Label("<b>" + L("#engineAnalyzer_ThrustCurve") + "</b>");
-                    GUILayout.Label(L("#engineAnalyzer_TotalImpulse") + $" <color=lime>{displayTotalImpulse:F1} kN·s</color>");
-                    GUILayout.Label(L("#engineAnalyzer_AvgThrust") + $" <color=orange>{displayAvgThrust:F0} kN</color>");
-                    GUILayout.Label(L("#engineAnalyzer_BurnTime") + $" <color=cyan>{burnTime:F1} s</color>");
-                    GUILayout.EndVertical();
-                }
-                else
-                {
-                    GUILayout.BeginHorizontal();
-                    GUILayout.BeginVertical(GUI.skin.box, GUILayout.Width(220));
-                    GUILayout.Label("<b>" + L("#engineAnalyzer_Performance") + "</b>");
-                    GUILayout.Label(L("#engineAnalyzer_RatedThrust") + $" <color=lime>{baseThrust:F0} kN</color>");
-                    if (_grainPresets.Count > 0 && Math.Abs(grainThrust - baseThrust) > 1f)
-                        GUILayout.Label(L("#engineAnalyzer_GrainThrust") + $" <color=#aaffaa>{grainThrust:F0} kN</color>");
-                    GUILayout.Label(L("#engineAnalyzer_VacuumIsp") + $" <color=cyan>{displayIspVac:F0} s</color>");
-                    GUILayout.Label(L("#engineAnalyzer_SeaLevelIsp") + $" <color=orange>{displayIspASL:F0} s</color>");
-                    GUILayout.Label(L("#engineAnalyzer_TWRSelf") + $" <color=yellow>{twr:F2}</color>");
-                    GUILayout.Label(L("#engineAnalyzer_Price") + $" <color=yellow>{selectedEngine.part.cost:F0}</color>");
-                    GUILayout.Label(L("#engineAnalyzer_Mass") + $" {displayMass:F3} t");
-                    GUILayout.EndVertical();
-                    GUILayout.Space(10);
-                    GUILayout.BeginVertical(GUI.skin.box, GUILayout.Width(panelWidth - 250));
-                    GUILayout.Label("<b>" + L("#engineAnalyzer_ThrustCurve") + "</b>");
-                    GUILayout.Label(L("#engineAnalyzer_TotalImpulse") + $" <color=lime>{displayTotalImpulse:F1} kN·s</color>");
-                    GUILayout.Label(L("#engineAnalyzer_AvgThrust") + $" <color=orange>{displayAvgThrust:F0} kN</color>");
-                    GUILayout.Label(L("#engineAnalyzer_BurnTime") + $" <color=cyan>{burnTime:F1} s</color>");
-                    GUILayout.EndVertical();
-                    GUILayout.EndHorizontal();
-                }
-
-                GUILayout.Space(8);
+                GUILayout.Space(8f);
 
                 float yLabelWidth = 65f;
-                float chartWidth = isCompactMode ? panelWidth - 60 : panelWidth - yLabelWidth - 50f;
-                float chartHeight = 150f;
-                int yDivisions = 5;
-                int xDivisions = 6;
-
-                float curvePeak = 1f;
-                if (displayCurve != null)
-                {
-                    for (float t = 0; t <= 1f; t += 0.01f)
-                    {
-                        float v = displayCurve.Evaluate((1f - t) * curveTimeMax);
-                        if (!float.IsNaN(v) && !float.IsInfinity(v) && v > curvePeak) curvePeak = v;
-                    }
-                }
-                float chartMaxKN = displayThrust * Math.Max(curvePeak, 0.001f);
+                float chartWidth = isCompactMode ? 370f : 740f;
+                float chartHeight = 140f;
 
                 GUILayout.BeginHorizontal();
                 GUILayout.BeginVertical(GUILayout.Width(yLabelWidth));
-                float labelSlotH = chartHeight / (yDivisions - 1);
-                for (int i = 0; i < yDivisions; i++)
-                {
-                    float tv = chartMaxKN * ((float)(yDivisions - 1 - i) / (yDivisions - 1));
-                    GUILayout.Label($"<size=11><color=#cccccc>{tv:F0} kN</color></size>",
-                        GUILayout.Width(yLabelWidth), GUILayout.Height(labelSlotH));
-                }
+                GUILayout.Label($"{cfg.maxThrust:F0} kN", GUILayout.Height(28f));
+                GUILayout.Label($"{(cfg.maxThrust * 0.75f):F0} kN", GUILayout.Height(28f));
+                GUILayout.Label($"{(cfg.maxThrust * 0.5f):F0} kN", GUILayout.Height(28f));
+                GUILayout.Label($"{(cfg.maxThrust * 0.25f):F0} kN", GUILayout.Height(28f));
+                GUILayout.Label("0 kN", GUILayout.Height(20f));
                 GUILayout.EndVertical();
 
                 GUILayout.BeginVertical(GUILayout.Width(chartWidth));
-
                 Rect reservedRect = GUILayoutUtility.GetRect(chartWidth, chartHeight);
                 if (Event.current.type == EventType.Repaint)
-                {
                     _cachedChartRect = reservedRect;
-                    DrawThrustCurve(_cachedChartRect, displayCurve, chartMaxKN, detailWindowRect, burnTime, curveTimeMax);
-                }
-                else if (_cachedChartRect != Rect.zero)
-                {
-                    DrawThrustCurve(_cachedChartRect, displayCurve, chartMaxKN, detailWindowRect, burnTime, curveTimeMax);
-                }
+                if (_cachedChartRect != Rect.zero && cfg.thrustCurve != null)
+                    DrawThrustCurve(_cachedChartRect, cfg.thrustCurve, cfg.maxThrust, detailWindowRect, cfg.burnTime);
 
                 GUILayout.BeginHorizontal(GUILayout.Width(chartWidth));
-                float slotW = chartWidth / xDivisions;
-                for (int i = 0; i < xDivisions; i++)
+                float slotW = chartWidth / 5f;
+                for (int i = 0; i <= 5; i++)
                 {
-                    float timeVal = burnTime * ((float)i / xDivisions);
-                    float labelW = (i == xDivisions - 1) ? slotW - 25f : slotW;
-                    GUILayout.Label($"<size=11><color=#cccccc>{timeVal:F1}</color></size>",
-                        GUILayout.Width(labelW), GUILayout.Height(20));
+                    float timeVal = (cfg.burnTime / 5f) * i;
+                    GUILayout.Label($"<size=11>{timeVal:F1}s</size>", GUILayout.Width((i == 5) ? slotW - 25f : slotW));
                 }
                 GUILayout.EndHorizontal();
 
-                GUILayout.BeginHorizontal(GUILayout.Width(chartWidth));
-                GUILayout.FlexibleSpace();
-                GUILayout.Label($"<size=12><color=#aaaaaa>{L("#engineAnalyzer_TimeSeconds")}</color></size>");
-                GUILayout.FlexibleSpace();
-                GUILayout.EndHorizontal();
-
+                GUILayout.Label($"<size=12><color=gray>== {L("#engineAnalyzer_Timeline")} ==</color></size>", GUILayout.Width(chartWidth));
                 GUILayout.EndVertical();
                 GUILayout.EndHorizontal();
             }
-            else
+
+            GUILayout.Space(10f);
+
+            GUILayout.Label($"<b>{L("#engineAnalyzer_ConfigList")}</b>");
+            foreach (var c in selectedEngine.configs.Take(4))
             {
-                GUILayout.Label("<b>" + L("#engineAnalyzer_Performance") + "</b>");
-
-                float displayThrust = selectedEngine.baseThrust;
-                float displayIspVac = selectedEngine.baseIspVac;
-                float displayIspASL = selectedEngine.baseIspASL;
-
-                GUILayout.Label(L("#engineAnalyzer_BaseThrust") + $" <color=lime>{displayThrust:F0} kN</color>");
-                GUILayout.Label(L("#engineAnalyzer_VacuumIsp") + $" <color=cyan>{displayIspVac:F0} s</color>");
-                GUILayout.Label(L("#engineAnalyzer_SeaLevelIsp") + $" <color=orange>{displayIspASL:F0} s</color>");
-
-                float twr = displayThrust / (selectedEngine.part.partPrefab.mass * 9.81f);
-                GUILayout.Label(L("#engineAnalyzer_TWRSelf") + $" <color=yellow>{twr:F2}</color>");
-                GUILayout.Label(L("#engineAnalyzer_Price") + $" <color=yellow>{selectedEngine.part.cost:F0}</color>");
-
-                float displayMass = selectedEngine.part.partPrefab.mass;
-                GUILayout.Label(L("#engineAnalyzer_Mass") + $" {displayMass:F3} t");
-
-                if (selectedEngine.isJet)
-                {
-                    GUILayout.Space(10);
-                    GUILayout.Label("<b>" + L("#engineAnalyzer_JetCharacteristics") + "</b>");
-                    GUILayout.Label(L("#engineAnalyzer_ThrustCharacteristic") + " <color=yellow>" + L("#engineAnalyzer_VariesWithSpeed") + "</color>");
-                    GUILayout.Label(L("#engineAnalyzer_OperatingRange") + " <color=cyan>" + L("#engineAnalyzer_WithinAtmo") + "</color>");
-                }
-                else if (selectedEngine.fuelType == FuelType.Xenon || selectedEngine.fuelType == FuelType.Electric)
-                {
-                    GUILayout.Space(10);
-                    GUILayout.Label("<b>" + L("#engineAnalyzer_ElectricProp") + "</b>");
-                    GUILayout.Label(L("#engineAnalyzer_ThrustType") + " <color=yellow>" + L("#engineAnalyzer_ContinuousLow") + "</color>");
-                }
-                else
-                {
-                    GUILayout.Space(10);
-                    GUILayout.Label("<b>" + L("#engineAnalyzer_ThrustCharacteristics") + "</b>");
-                    GUILayout.Label(L("#engineAnalyzer_ThrustType") + " <color=green>" + L("#engineAnalyzer_Throttleable") + "</color>");
-                }
-            }
-
-            GUILayout.Space(10);
-            GUILayout.Label("<b>" + L("#engineAnalyzer_Configurations") + "</b>");
-            foreach (var cfg in selectedEngine.configs.Take(3))
-            {
-                GUILayout.Label($"  {cfg.configName}: Δv={cfg.deltaV:F0}m/s, TWR={cfg.twr:F2}, Isp={cfg.ispVac:F0}s");
-            }
-            if (selectedEngine.configs.Count > 3)
-            {
-                GUILayout.Label($"  ... ({selectedEngine.configs.Count - 3} " + L("#engineAnalyzer_MoreConfigs"));
+                GUILayout.Label($"  {c.configName}: Δv={c.deltaV:F0} | TWR={c.twr:F2} | Isp={c.ispVac:F0}s");
             }
 
             GUILayout.FlexibleSpace();
+
             GUILayout.BeginHorizontal();
-            GUILayout.FlexibleSpace();
-            if (GUILayout.Button(L("#engineAnalyzer_Spawn"), GUILayout.Width(100), GUILayout.Height(25)))
+            if (GUILayout.Button(L("#engineAnalyzer_Spawn"), GUILayout.Width(110f), GUILayout.Height(25f)))
             {
-                EditorLogic.fetch.SpawnPart(selectedEngine.part);
+                SpawnAndConfigure(selectedEngine.part, cfg.configName);
             }
-            if (GUILayout.Button(L("#engineAnalyzer_Close"), GUILayout.Width(100), GUILayout.Height(25)))
+            GUILayout.Space(15f);
+            if (GUILayout.Button(L("#engineAnalyzer_Close"), GUILayout.Width(100f), GUILayout.Height(25f)))
             {
                 showDetailPanel = false;
                 selectedEngine = null;
             }
-            GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
 
             GUILayout.EndVertical();
             GUI.DragWindow();
         }
-
         /// <summary>
         /// 读取 BetterSRB 的药柱变体列表。
         /// </summary>
@@ -2523,6 +2296,7 @@ namespace KSP_EngineAnalyzer
         public AnimationCurve thrustCurve;
         public float totalImpulse;
         public float avgThrust;
+        public float maxThrust;
         public float burnTime;
     }
 }
