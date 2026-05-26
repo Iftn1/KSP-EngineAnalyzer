@@ -8,7 +8,7 @@ using System.Reflection;
 namespace KSP_EngineAnalyzer
 {
     public enum SortMode { DeltaV, TWR, Isp, Value }
-    public enum SizeFilter { All, Size0625, Size125, Size25, Size375 }
+    public enum SizeFilter { All, Size0625, Size125, Size25, Size375, Size01875, Size5, Surface }
     public enum FuelType { All, LOXKerosene, LOXH2, LOXMethane, Hypergolic, SolidFuel, Monopropellant, Airbreathing, Xenon, Electric, Other }
 
     [KSPAddon(KSPAddon.Startup.EditorAny, false)]
@@ -139,6 +139,7 @@ namespace KSP_EngineAnalyzer
             ispLimit = PlayerPrefs.GetFloat("EA_ispLimit", 4000f);
             twrFilterLimit = PlayerPrefs.GetFloat("EA_twrFilterLimit", 20.1f);
             twrMinLimit = PlayerPrefs.GetFloat("EA_twrMinLimit", 0f);
+            engineCount = PlayerPrefs.GetInt("EA_engineCount", 1);
         }
 
         private void SaveSettings()
@@ -157,6 +158,7 @@ namespace KSP_EngineAnalyzer
             PlayerPrefs.SetFloat("EA_ispLimit", ispLimit);
             PlayerPrefs.SetFloat("EA_twrFilterLimit", twrFilterLimit);
             PlayerPrefs.SetFloat("EA_twrMinLimit", twrMinLimit);
+            PlayerPrefs.SetInt("EA_engineCount", engineCount);
             PlayerPrefs.Save();
         }
 
@@ -256,35 +258,117 @@ namespace KSP_EngineAnalyzer
 
         private float GetPartSize(AvailablePart ap)
         {
-            if (ap.partPrefab != null)
+            string titleLower = ap.title != null ? ap.title.ToLower() : "";
+            string nameLower = ap.name != null ? ap.name.ToLower() : "";
+
+            if (IsSurfaceAttached(ap))
+                return 0f;
+
+            string profiles = ap.bulkheadProfiles != null
+                ? ap.bulkheadProfiles.ToLower() : "";
+
+            if (profiles.Contains("size1p5") || profiles.Contains("size1.5"))
+                return 1.875f;
+            if (profiles.Contains("size0")) return 0.625f;
+            if (profiles.Contains("size1")) return 1.25f;
+            if (profiles.Contains("size2")) return 2.5f;
+            if (profiles.Contains("size3")) return 3.75f;
+            if (profiles.Contains("size4")) return 5.0f;
+
+            if (titleLower.Contains("1.875m") || nameLower.Contains("1875"))
+                return 1.875f;
+
+            int maxNodeSize = -1;
+            if (ap.partPrefab != null && ap.partPrefab.attachNodes != null && ap.partPrefab.attachNodes.Count > 0)
             {
-                var field = ap.partPrefab.GetType().GetField("size", System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
-                if (field != null) return (float)field.GetValue(ap.partPrefab);
+                foreach (var node in ap.partPrefab.attachNodes)
+                {
+                    try
+                    {
+                        if (node.nodeType == AttachNode.NodeType.Stack && node.size > maxNodeSize)
+                            maxNodeSize = node.size;
+                    }
+                    catch { if (node.size > maxNodeSize) maxNodeSize = node.size; }
+                }
             }
-            if (ap.partConfig != null && ap.partConfig.HasValue("size"))
-            {
-                if (float.TryParse(ap.partConfig.GetValue("size"), out float s)) return s;
-            }
+
+            if (maxNodeSize >= 4 || titleLower.Contains("5m") || nameLower.Contains("5m"))
+                return 5.0f;
+            if (maxNodeSize == 3 || titleLower.Contains("3.75m") || nameLower.Contains("375"))
+                return 3.75f;
+            if (maxNodeSize == 2 || titleLower.Contains("2.5m") || nameLower.Contains("25"))
+                return 2.5f;
+            if (maxNodeSize == 1 || titleLower.Contains("1.25m") || nameLower.Contains("125"))
+                return 1.25f;
+            if (maxNodeSize == 0 || titleLower.Contains("0.625m") || nameLower.Contains("0625"))
+                return 0.625f;
+
             return 1.25f;
+        }
+
+        private bool IsSurfaceAttached(AvailablePart ap)
+        {
+            if (ap?.partPrefab == null) return false;
+
+            bool hasStackNode = false;
+            bool hasSurfaceNode = false;
+
+            if (ap.partPrefab.attachNodes != null && ap.partPrefab.attachNodes.Count > 0)
+            {
+                foreach (var node in ap.partPrefab.attachNodes)
+                {
+                    try
+                    {
+                        if (node.nodeType == AttachNode.NodeType.Surface)
+                            hasSurfaceNode = true;
+                        else if (node.nodeType == AttachNode.NodeType.Stack && node.size >= 0)
+                            hasStackNode = true;
+                    }
+                    catch
+                    {
+                        string nid = node.id != null ? node.id.ToLower() : "";
+                        if (nid.Contains("attach") || nid.Contains("surface") || nid.Contains("srf"))
+                            hasSurfaceNode = true;
+                        else
+                            hasStackNode = true;
+                    }
+                }
+            }
+
+            if (hasSurfaceNode && !hasStackNode) return true;
+
+            string titleLower = ap.title != null ? ap.title.ToLower() : "";
+            string nameLower = ap.name != null ? ap.name.ToLower() : "";
+            if (titleLower.Contains("radial") || titleLower.Contains("srf") ||
+                nameLower.Contains("radial") || nameLower.Contains("srf"))
+                return true;
+
+            return false;
         }
 
         private string GetEngineSize(AvailablePart ap)
         {
+            if (IsSurfaceAttached(ap)) return "SRF";
             float size = GetPartSize(ap);
             if (Math.Abs(size - 0.625f) < 0.1f) return "0.625m";
             if (Math.Abs(size - 1.25f) < 0.1f) return "1.25m";
+            if (Math.Abs(size - 1.875f) < 0.1f) return "1.875m";
             if (Math.Abs(size - 2.5f) < 0.1f) return "2.5m";
             if (Math.Abs(size - 3.75f) < 0.1f) return "3.75m";
+            if (Math.Abs(size - 5.0f) < 0.1f) return "5m";
             return size.ToString("F3") + "m";
         }
 
         private SizeFilter GetEngineSizeFilter(AvailablePart ap)
         {
+            if (IsSurfaceAttached(ap)) return SizeFilter.Surface;
             float size = GetPartSize(ap);
             if (Math.Abs(size - 0.625f) < 0.1f) return SizeFilter.Size0625;
             if (Math.Abs(size - 1.25f) < 0.1f) return SizeFilter.Size125;
+            if (Math.Abs(size - 1.875f) < 0.1f) return SizeFilter.Size01875;
             if (Math.Abs(size - 2.5f) < 0.1f) return SizeFilter.Size25;
             if (Math.Abs(size - 3.75f) < 0.1f) return SizeFilter.Size375;
+            if (Math.Abs(size - 5.0f) < 0.1f) return SizeFilter.Size5;
             return SizeFilter.All;
         }
 
@@ -835,6 +919,7 @@ namespace KSP_EngineAnalyzer
                     partTitle = Localizer.Format(ap.title),
                     isJet = isJet,
                     isSRB = isSRB,
+                    isSurface = IsSurfaceAttached(ap),
                     isHidden = !IsPartVisible(ap),
                     engineSize = GetEngineSize(ap),
                     sizeFilter = GetEngineSizeFilter(ap),
@@ -1320,7 +1405,7 @@ namespace KSP_EngineAnalyzer
                 if (filterNonRO) { string tu = g.partTitle.ToUpper(); if (tu.Contains("NON RO") || tu.Contains("NONRO")) continue; }
                 // Fuel filter commented out: if (currentFuelFilter != FuelType.All && g.fuelType != currentFuelFilter) continue;
 
-                var fg = new EnginePartGroup { part = g.part, partTitle = g.partTitle, isJet = g.isJet, isSRB = g.isSRB, configs = new List<EngineConfig>(), isHidden = g.isHidden, engineSize = g.engineSize, fuelType = g.fuelType, baseThrust = g.baseThrust, baseIspVac = g.baseIspVac, baseIspASL = g.baseIspASL, manufacturer = g.manufacturer, thrustCurve = g.thrustCurve, totalImpulse = g.totalImpulse, avgThrust = g.avgThrust };
+                var fg = new EnginePartGroup { part = g.part, partTitle = g.partTitle, isJet = g.isJet, isSRB = g.isSRB, isSurface = g.isSurface, configs = new List<EngineConfig>(), isHidden = g.isHidden, engineSize = g.engineSize, sizeFilter = g.sizeFilter, fuelType = g.fuelType, baseThrust = g.baseThrust, baseIspVac = g.baseIspVac, baseIspASL = g.baseIspASL, manufacturer = g.manufacturer, thrustCurve = g.thrustCurve, totalImpulse = g.totalImpulse, avgThrust = g.avgThrust };
                 foreach (var c in g.configs)
                 {
                     if ((isSciFiMode || (isVacMode ? c.ispVac : c.ispASL) <= ispLimit) && (twrFilterLimit >= 20.1f || c.twr <= twrFilterLimit + 0.01f) && c.twr >= twrMinLimit - 0.01f && (!isSmartMode || c.meetsSmartCriteria))
@@ -1361,11 +1446,10 @@ namespace KSP_EngineAnalyzer
 
             if (showDetailPanel && selectedEngine != null)
             {
-                detailWindowRect.width = isCompactMode ? 450f : 850f;
-                detailWindowRect.height = isCompactMode ? 800f : 950f;
-
                 if (_detailPanelJustOpened)
                 {
+                    detailWindowRect.width = isCompactMode ? 450f : 850f;
+                    detailWindowRect.height = isCompactMode ? 800f : 950f;
                     detailWindowRect.x = windowRect.x + windowRect.width + 20f;
                     detailWindowRect.y = windowRect.y;
                     _detailPanelJustOpened = false;
@@ -1384,7 +1468,7 @@ namespace KSP_EngineAnalyzer
             GUILayout.BeginHorizontal();
             if (GUILayout.Button(isVacMode ? L("#engineAnalyzer_VacuumMode") : L("#engineAnalyzer_SeaLevelMode"))) { isVacMode = !isVacMode; RefreshData(); }
             if (GUILayout.Button(isSmartMode ? L("#engineAnalyzer_ReverseMode") : L("#engineAnalyzer_NormalMode"))) { isSmartMode = !isSmartMode; RefreshData(); }
-            if (GUILayout.Button(isCompactMode ? L("#engineAnalyzer_CompactMode") : L("#engineAnalyzer_NormalLayout"))) { isCompactMode = !isCompactMode; windowRect.width = isCompactMode ? 450f : 850f; windowRect.height = 680f; }
+            if (GUILayout.Button(isCompactMode ? L("#engineAnalyzer_CompactMode") : L("#engineAnalyzer_NormalLayout"))) { isCompactMode = !isCompactMode; windowRect.width = isCompactMode ? 450f : 850f; windowRect.height = 680f; if (showDetailPanel) { detailWindowRect.width = isCompactMode ? 450f : 850f; detailWindowRect.height = isCompactMode ? 800f : 950f; } }
             GUILayout.EndHorizontal();
 
             GUILayout.BeginVertical(GUI.skin.box);
@@ -1424,7 +1508,7 @@ namespace KSP_EngineAnalyzer
             if (float.TryParse(targetVolumeInput, out float v) && Math.Abs(v - targetVolumeKL) > 0.01f) { targetVolumeKL = v; RefreshData(); }
             GUILayout.Space(20);
             GUILayout.Label($"{L("#engineAnalyzer_Cluster")}: {engineCount}", GUILayout.Width(50));
-            int nc = (int)GUILayout.HorizontalSlider(engineCount, 1, 12); if (nc != engineCount) { engineCount = nc; RefreshData(); }
+            int nc = Mathf.RoundToInt(GUILayout.HorizontalSlider(engineCount, 1, 12)); if (nc != engineCount) { engineCount = nc; RefreshData(); }
             GUILayout.EndHorizontal();
 
             bool fd = filterDeprecated;
@@ -1462,15 +1546,21 @@ namespace KSP_EngineAnalyzer
                 GUILayout.BeginHorizontal();
                 GUILayout.Label(L("#engineAnalyzer_Size"), GUILayout.Width(40));
                 string sizeAll = L("#engineAnalyzer_All");
+                string sizeSRF = L("#engineAnalyzer_SRF");
                 string size0625 = L("#engineAnalyzer_0625");
                 string size125 = L("#engineAnalyzer_125");
+                string size1875 = L("#engineAnalyzer_1875");
                 string size25 = L("#engineAnalyzer_25");
                 string size375 = L("#engineAnalyzer_375");
+                string size5 = L("#engineAnalyzer_5m");
                 if (GUILayout.Button(currentSizeFilter == SizeFilter.All ? L("#engineAnalyzer_AllHighlighted") : sizeAll, GUILayout.Width(AutoButtonWidth(sizeAll)))) { currentSizeFilter = SizeFilter.All; ApplyFilters(); }
+                if (GUILayout.Button(currentSizeFilter == SizeFilter.Surface ? L("#engineAnalyzer_SRFHighlighted") : sizeSRF, GUILayout.Width(AutoButtonWidth(sizeSRF)))) { currentSizeFilter = SizeFilter.Surface; ApplyFilters(); }
                 if (GUILayout.Button(currentSizeFilter == SizeFilter.Size0625 ? L("#engineAnalyzer_0625Highlighted") : size0625, GUILayout.Width(AutoButtonWidth(size0625)))) { currentSizeFilter = SizeFilter.Size0625; ApplyFilters(); }
                 if (GUILayout.Button(currentSizeFilter == SizeFilter.Size125 ? L("#engineAnalyzer_125Highlighted") : size125, GUILayout.Width(AutoButtonWidth(size125)))) { currentSizeFilter = SizeFilter.Size125; ApplyFilters(); }
+                if (GUILayout.Button(currentSizeFilter == SizeFilter.Size01875 ? L("#engineAnalyzer_1875Highlighted") : size1875, GUILayout.Width(AutoButtonWidth(size1875)))) { currentSizeFilter = SizeFilter.Size01875; ApplyFilters(); }
                 if (GUILayout.Button(currentSizeFilter == SizeFilter.Size25 ? L("#engineAnalyzer_25Highlighted") : size25, GUILayout.Width(AutoButtonWidth(size25)))) { currentSizeFilter = SizeFilter.Size25; ApplyFilters(); }
                 if (GUILayout.Button(currentSizeFilter == SizeFilter.Size375 ? L("#engineAnalyzer_375Highlighted") : size375, GUILayout.Width(AutoButtonWidth(size375)))) { currentSizeFilter = SizeFilter.Size375; ApplyFilters(); }
+                if (GUILayout.Button(currentSizeFilter == SizeFilter.Size5 ? L("#engineAnalyzer_5mHighlighted") : size5, GUILayout.Width(AutoButtonWidth(size5)))) { currentSizeFilter = SizeFilter.Size5; ApplyFilters(); }
                 GUILayout.EndHorizontal();
 
                 // Fuel filter commented out due to instability
@@ -1494,21 +1584,21 @@ namespace KSP_EngineAnalyzer
             GUILayout.BeginHorizontal();
             string ispDisplay = ispLimit >= SCIFI_THRESHOLD ? L("#engineAnalyzer_SciFi") : $"{ispLimit:F0}s";
             GUILayout.Label($"{L("#engineAnalyzer_IspLimit")}: {ispDisplay}", GUILayout.Width(110));
-            ispLimit = GUILayout.HorizontalSlider(ispLimit, 100f, 20001f);
-            ApplyFilters();
+            float newIsp = GUILayout.HorizontalSlider(ispLimit, 100f, 20001f);
+            if (Math.Abs(newIsp - ispLimit) > 0.5f) { ispLimit = newIsp; ApplyFilters(); }
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
             string twrVal = twrFilterLimit >= 20.1f ? L("#engineAnalyzer_None") : twrFilterLimit.ToString("F1");
             GUILayout.Label($"{L("#engineAnalyzer_MaxTWR")}: {twrVal}", GUILayout.Width(110));
-            twrFilterLimit = GUILayout.HorizontalSlider(twrFilterLimit, 0.1f, 20.1f);
-            ApplyFilters();
+            float newTwrLimit = GUILayout.HorizontalSlider(twrFilterLimit, 0.1f, 20.1f);
+            if (Math.Abs(newTwrLimit - twrFilterLimit) > 0.05f) { twrFilterLimit = newTwrLimit; ApplyFilters(); }
             GUILayout.EndHorizontal();
 
             GUILayout.BeginHorizontal();
             GUILayout.Label($"{L("#engineAnalyzer_MinTWR")}: {twrMinLimit:F1}", GUILayout.Width(110));
-            twrMinLimit = GUILayout.HorizontalSlider(twrMinLimit, 0.0f, 10.0f);
-            ApplyFilters();
+            float newTwrMin = GUILayout.HorizontalSlider(twrMinLimit, 0.0f, 10.0f);
+            if (Math.Abs(newTwrMin - twrMinLimit) > 0.05f) { twrMinLimit = newTwrMin; ApplyFilters(); }
             GUILayout.EndHorizontal();
 
             if (isSmartMode)
@@ -2270,7 +2360,7 @@ namespace KSP_EngineAnalyzer
 
     public class EnginePartGroup
     {
-        public AvailablePart part; public string partTitle; public bool isJet, isSRB;
+        public AvailablePart part; public string partTitle; public bool isJet, isSRB, isSurface;
         public List<EngineConfig> configs = new List<EngineConfig>();
         public float MinPrice => configs.Count > 0 ? configs.Min(c => c.price) : 0;
         public float MinVolume => configs.Count > 0 ? configs.Min(c => c.displayVolume) : 0;
