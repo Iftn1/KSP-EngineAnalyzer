@@ -4,6 +4,8 @@ using System.Linq;
 using UnityEngine;
 using KSP.Localization;
 using System.Reflection;
+using System.IO;
+using KSP.UI.Screens;
 
 namespace KSP_EngineAnalyzer
 {
@@ -67,6 +69,9 @@ namespace KSP_EngineAnalyzer
         private bool showBodyDropdown = false;
         private Vector2 _bodyDropdownScroll = Vector2.zero;
         private Rect bodyDropdownRect = new Rect(0, 0, 200, 250);
+
+        private ApplicationLauncherButton _appLauncherButton;
+        private Texture2D _appIcon;
 
         // BetterSRB 药柱预设
         private List<BetterSRBGrain> _grainPresets = new List<BetterSRBGrain>();
@@ -145,6 +150,65 @@ namespace KSP_EngineAnalyzer
             windowRect.width = isCompactMode ? 450f : 850f;
 
             try { InitBodyList(); } catch { }
+            GameEvents.onGUIApplicationLauncherReady.Add(OnLauncherReady);
+            GameEvents.onGUIApplicationLauncherDestroyed.Add(OnLauncherDestroyed);
+        }
+
+        private void Start()
+        {
+            if (ApplicationLauncher.Instance != null && _appLauncherButton == null)
+                CreateToolbarButton();
+        }
+
+        private void OnLauncherReady()
+        {
+            CreateToolbarButton();
+        }
+
+        private void OnLauncherDestroyed()
+        {
+            _appLauncherButton = null;
+        }
+
+        private void CreateToolbarButton()
+        {
+            if (_appLauncherButton != null)
+            {
+                ApplicationLauncher.Instance.RemoveModApplication(_appLauncherButton);
+                _appLauncherButton = null;
+            }
+            if (ApplicationLauncher.Instance == null) return;
+
+            if (_appIcon == null)
+            {
+                _appIcon = GameDatabase.Instance.GetTexture("EngineAnalyzer/icon", false);
+                if (_appIcon == null)
+                {
+                    Debug.LogError("[EngineAnalyzer] Failed to load icon.png from GameData/EngineAnalyzer/");
+                    return;
+                }
+            }
+
+            _appLauncherButton = ApplicationLauncher.Instance.AddModApplication(
+                OnAppButtonTrue,
+                OnAppButtonFalse,
+                null, null, null, null,
+                ApplicationLauncher.AppScenes.VAB | ApplicationLauncher.AppScenes.SPH,
+                _appIcon);
+        }
+
+        private void OnAppButtonTrue()
+        {
+            isVisible = true;
+            try { CheckShipReset(); } catch { }
+            try { SyncCurrentStage(); } catch { }
+            try { RefreshData(); } catch { }
+        }
+
+        private void OnAppButtonFalse()
+        {
+            isVisible = false;
+            InputLockManager.RemoveControlLock(lockID);
         }
 
         private void LoadSettings()
@@ -419,23 +483,21 @@ namespace KSP_EngineAnalyzer
 
         private void Update()
         {
-            if (Input.GetKey(KeyCode.LeftControl) && Input.GetKeyDown(KeyCode.E))
-            {
-                isVisible = !isVisible;
-                if (isVisible)
-                {
-                    try { CheckShipReset(); } catch { }
-                    try { SyncCurrentStage(); } catch { }
-                    try { RefreshData(); } catch { }
-                }
-                else { InputLockManager.RemoveControlLock(lockID); }
-            }
         }
 
         private void OnDestroy()
         {
             InputLockManager.RemoveControlLock(lockID);
             SaveSettings();
+
+            GameEvents.onGUIApplicationLauncherReady.Remove(OnLauncherReady);
+            GameEvents.onGUIApplicationLauncherDestroyed.Remove(OnLauncherDestroyed);
+
+            if (_appLauncherButton != null)
+            {
+                ApplicationLauncher.Instance.RemoveModApplication(_appLauncherButton);
+                _appLauncherButton = null;
+            }
         }
 
         private void SpawnAndConfigure(AvailablePart ap, string configName)
@@ -1795,7 +1857,12 @@ namespace KSP_EngineAnalyzer
             GUILayout.EndScrollView();
             GUILayout.FlexibleSpace();
             GUILayout.BeginHorizontal();
-            if (GUILayout.Button(L("#engineAnalyzer_CloseWindow"), GUILayout.Height(25))) isVisible = false;
+            if (GUILayout.Button(L("#engineAnalyzer_CloseWindow"), GUILayout.Height(25)))
+            {
+                isVisible = false;
+                InputLockManager.RemoveControlLock(lockID);
+                try { if (_appLauncherButton != null) _appLauncherButton.SetTrue(false); } catch { }
+            }
             GUILayout.EndHorizontal();
             GUILayout.EndVertical();
             if (Event.current.type == EventType.Repaint && !string.IsNullOrEmpty(GUI.tooltip))
