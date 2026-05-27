@@ -1,7 +1,9 @@
 # KSP EngineAnalyzer 
 An advanced engine screening and planning tool built for Kerbal Space Program (KSP). It uses mathematical simulations to recommend the most suitable engines for your current spacecraft. 
- 
-Press **Ctrl+E** in the VAB/SPH to start. [中文说明](./docs/中文/README.md) 
+ <img width="1254" height="1254" alt="BA305B7F4FF7E5A1F43EFE3C29D9E472" src="https://github.com/user-attachments/assets/5953daab-0aba-46e7-a699-918ddb80c042" />
+
+Press <img width="58" height="56" alt="image" src="https://github.com/user-attachments/assets/fd7285f4-4f41-4652-a769-a1ed1ee60532" />
+in the VAB/SPH to start. [中文说明](./docs/中文/README.md) 
  
 ### Features ### 
 - **Vacuum Mode** - Optimizes for vacuum engines using vacuum Isp and thrust values. Toggle to switch to "Sea Level Mode". 
@@ -38,6 +40,5 @@ This mod is generally compatible with most KSP versions (untested) and requires 
    `X:\...\Kerbal Space Program\GameData\EngineAnalyzer` (where X is your drive). 
 3. Once installed, enter the VAB and press **Ctrl+E**. If the interface appears, the installation was successful. 
 
-<img width="846" height="952" alt="91c2a14469a50d26142347b0970b3b1f" src="https://github.com/user-attachments/assets/e0c8c09e-2ee4-4041-8d1d-ecf860c286ed" />
+<img width="1119" height="825" alt="image" src="https://github.com/user-attachments/assets/46227730-a6df-4f13-97cd-07b60a7d7058" />
 
-<img width="459" height="770" alt="81db1e28180bd3a5e049b36e264d0730" src="https://github.com/user-attachments/assets/394e03eb-cd2a-410c-849c-3c6aad4b81bf" />
