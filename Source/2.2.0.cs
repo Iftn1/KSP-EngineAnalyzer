@@ -13,6 +13,15 @@ namespace KSP_EngineAnalyzer
     public enum SizeFilter { All, Size0625, Size125, Size25, Size375, Size01875, Size5, Surface }
     public enum FuelType { All, LOXKerosene, LOXH2, LOXMethane, Hypergolic, SolidFuel, Monopropellant, Airbreathing, Xenon, Electric, Other }
 
+    public class FuelCategory
+    {
+        public string name; public string tooltip; public HashSet<string> resourceNames; public bool isSelected;
+        public FuelCategory(string name, string tooltip, params string[] resources)
+        {
+            this.name = name; this.tooltip = tooltip; this.resourceNames = new HashSet<string>(resources.Select(r => r.ToLowerInvariant())); this.isSelected = false;
+        }
+    }
+
     [KSPAddon(KSPAddon.Startup.EditorAny, false)]
     public class EngineAnalyzerWindow : MonoBehaviour
     {
@@ -79,6 +88,13 @@ namespace KSP_EngineAnalyzer
         private Rect _cachedChartRect = Rect.zero;
         private Vector2 detailScrollPosition = Vector2.zero;
 
+        // 多维燃料筛选
+        private List<FuelCategory> fuelCategories = new List<FuelCategory>();
+        private bool isFuelFilterStrict = false;
+        private bool showFuelFilterWindow = false;
+        private Rect fuelFilterWindowRect = new Rect(200, 200, 320, 420);
+        private Vector2 fuelFilterScroll = Vector2.zero;
+
         private static Material _glMaterial = null;
         private static readonly string[] solidPropellants = new[] { "SolidFuel", "NGNC", "PBAN", "HTPB", "PSAM", "Polybutadiene" };
 
@@ -109,7 +125,7 @@ namespace KSP_EngineAnalyzer
                 if (!string.IsNullOrEmpty(result) && result != zh)
                     return result;
             }
-            return zh;
+            return en ?? zh;
         }
 
         private float AutoToggleWidth(string text)
@@ -143,6 +159,27 @@ namespace KSP_EngineAnalyzer
             if (selectedBodyIndex >= targetBodies.Count) selectedBodyIndex = 0;
         }
 
+        private void InitFuelCategories()
+        {
+            if (fuelCategories.Count > 0) return;
+            fuelCategories.Add(new FuelCategory(L("#engineAnalyzer_fuelCat_Cryogenic"), L("#engineAnalyzer_fuelCat_CryogenicTip"),
+                "LqdOxygen", "LqdFluorine", "LqdHydrogen", "LqdMethane", "LqdNitrogen"));
+            fuelCategories.Add(new FuelCategory(L("#engineAnalyzer_fuelCat_Storable"), L("#engineAnalyzer_fuelCat_StorableTip"),
+                "Aerozine50", "AK20", "AK27", "MMH", "NTO", "Kerosene", "HTP"));
+            fuelCategories.Add(new FuelCategory(L("#engineAnalyzer_fuelCat_Hydrocarbon"), L("#engineAnalyzer_fuelCat_HydrocarbonTip"),
+                "Kerosene", "LqdMethane", "Ethanol", "Methanol"));
+            fuelCategories.Add(new FuelCategory(L("#engineAnalyzer_fuelCat_Hydrazines"), L("#engineAnalyzer_fuelCat_HydrazinesTip"),
+                "Hydrazine", "MMH", "UDMH", "Aerozine50", "Aniline"));
+            fuelCategories.Add(new FuelCategory(L("#engineAnalyzer_fuelCat_Oxidizers"), L("#engineAnalyzer_fuelCat_OxidizersTip"),
+                "LqdOxygen", "NTO", "MON1", "MON3", "MON10", "AK20", "AK27", "LqdFluorine", "OF2"));
+            fuelCategories.Add(new FuelCategory(L("#engineAnalyzer_fuelCat_Hypergolic"), L("#engineAnalyzer_fuelCat_HypergolicTip"),
+                "MMH", "UDMH", "NTO", "MON", "Aerozine50", "IRFNA"));
+            fuelCategories.Add(new FuelCategory(L("#engineAnalyzer_fuelCat_Monopropellant"), L("#engineAnalyzer_fuelCat_MonopropellantTip"),
+                "Hydrazine", "HTP"));
+            fuelCategories.Add(new FuelCategory(L("#engineAnalyzer_fuelCat_Solid"), L("#engineAnalyzer_fuelCat_SolidTip"),
+                "HTPB", "PBAN", "PSPC"));
+        }
+
         private void Awake()
         {
             LoadSettings();
@@ -150,6 +187,7 @@ namespace KSP_EngineAnalyzer
             windowRect.width = isCompactMode ? 450f : 850f;
 
             try { InitBodyList(); } catch { }
+            try { InitFuelCategories(); } catch { }
             GameEvents.onGUIApplicationLauncherReady.Add(OnLauncherReady);
             GameEvents.onGUIApplicationLauncherDestroyed.Add(OnLauncherDestroyed);
         }
@@ -1046,6 +1084,14 @@ namespace KSP_EngineAnalyzer
                         totalImpulse = totalImpulse,
                         avgThrust = avgThrust
                     };
+
+                    // 收集所有推进剂名称（原始名称，小写，避免汉化影响）
+                    foreach (var p in engineMod.propellants)
+                    {
+                        if (p != null && !string.IsNullOrEmpty(p.name))
+                            group.propellantNames.Add(p.name.ToLowerInvariant());
+                    }
+
                     ConfigNode mecNode = ap.partConfig?.GetNodes("MODULE").FirstOrDefault(n => { string mn = n.GetValue("name"); return mn != null && (mn.Contains("EngineConfigs") || mn.Contains("RealEngine") || mn.Contains("EnginesRF")); });
 
                     ConfigNode[] allConfigs = null;
@@ -1135,6 +1181,9 @@ namespace KSP_EngineAnalyzer
                                         var def = PartResourceLibrary.Instance.GetDefinition(pnName);
                                         cfgMixDensity += (ratio / cfgTotalRatio) * (def?.density ?? 0.005f);
                                         cfgFuels.Add(def?.displayName ?? pnName);
+                                        // 收集原始推进剂名称用于燃料筛选
+                                        if (!string.IsNullOrEmpty(pnName))
+                                            group.propellantNames.Add(pnName.ToLowerInvariant());
                                     }
                                 }
                             }
@@ -1540,7 +1589,42 @@ namespace KSP_EngineAnalyzer
                     if (filterDeprecated && g.partTitle.ToUpper().Contains("DEPRECATED")) continue;
                     if (filterNonRO) { string tu = g.partTitle.ToUpper(); if (tu.Contains("NON RO") || tu.Contains("NONRO")) continue; }
 
-                    var fg = new EnginePartGroup { part = g.part, partTitle = g.partTitle, isJet = g.isJet, isSRB = g.isSRB, isSurface = g.isSurface, configs = new List<EngineConfig>(), isHidden = g.isHidden, engineSize = g.engineSize, sizeFilter = g.sizeFilter, fuelType = g.fuelType, baseThrust = g.baseThrust, baseIspVac = g.baseIspVac, baseIspASL = g.baseIspASL, manufacturer = g.manufacturer, thrustCurve = g.thrustCurve, totalImpulse = g.totalImpulse, avgThrust = g.avgThrust };
+                    // 多维燃料筛选
+                    if (fuelCategories.Any(fc => fc.isSelected))
+                    {
+                        if (isFuelFilterStrict)
+                        {
+                            // 严格模式：发动机必须使用所有选中分类的燃料（每个分类至少匹配一种）
+                            bool allMatch = true;
+                            foreach (var fc in fuelCategories)
+                            {
+                                if (!fc.isSelected) continue;
+                                if (!fc.resourceNames.Any(r => g.propellantNames.Contains(r)))
+                                {
+                                    allMatch = false;
+                                    break;
+                                }
+                            }
+                            if (!allMatch) continue;
+                        }
+                        else
+                        {
+                            // 宽松模式：发动机只要使用任意一个选中分类的燃料即可
+                            bool anyMatch = false;
+                            foreach (var fc in fuelCategories)
+                            {
+                                if (!fc.isSelected) continue;
+                                if (fc.resourceNames.Any(r => g.propellantNames.Contains(r)))
+                                {
+                                    anyMatch = true;
+                                    break;
+                                }
+                            }
+                            if (!anyMatch) continue;
+                        }
+                    }
+
+                    var fg = new EnginePartGroup { part = g.part, partTitle = g.partTitle, isJet = g.isJet, isSRB = g.isSRB, isSurface = g.isSurface, configs = new List<EngineConfig>(), isHidden = g.isHidden, engineSize = g.engineSize, sizeFilter = g.sizeFilter, fuelType = g.fuelType, baseThrust = g.baseThrust, baseIspVac = g.baseIspVac, baseIspASL = g.baseIspASL, manufacturer = g.manufacturer, thrustCurve = g.thrustCurve, totalImpulse = g.totalImpulse, avgThrust = g.avgThrust, propellantNames = g.propellantNames };
                     foreach (var c in g.configs)
                     {
                         if ((isSciFiMode || (isVacMode ? c.ispVac : c.ispASL) <= ispLimit) && (twrFilterLimit >= 20.1f || c.twr <= twrFilterLimit + 0.01f) && c.twr >= twrMinLimit - 0.01f && (!isSmartMode || c.meetsSmartCriteria))
@@ -1577,7 +1661,8 @@ namespace KSP_EngineAnalyzer
             Vector2 mousePos = Event.current.mousePosition;
             bool mouseOverAny = windowRect.Contains(mousePos)
                 || (showBodyDropdown && bodyDropdownRect.Contains(mousePos))
-                || (showDetailPanel && detailWindowRect.Contains(mousePos));
+                || (showDetailPanel && detailWindowRect.Contains(mousePos))
+                || (showFuelFilterWindow && fuelFilterWindowRect.Contains(mousePos));
             if (mouseOverAny) { InputLockManager.SetControlLock(ControlTypes.EDITOR_LOCK, lockID); }
             else { InputLockManager.RemoveControlLock(lockID); }
 
@@ -1604,6 +1689,30 @@ namespace KSP_EngineAnalyzer
                 if (Event.current.type == EventType.MouseDown && !bodyDropdownRect.Contains(Event.current.mousePosition))
                     showBodyDropdown = false;
             }
+
+            if (showFuelFilterWindow)
+            {
+                fuelFilterWindowRect = GUILayout.Window(666, fuelFilterWindowRect, DrawFuelFilter, L("#engineAnalyzer_FuelFilterTitle"));
+                if (Event.current.type == EventType.MouseDown && !fuelFilterWindowRect.Contains(Event.current.mousePosition))
+                    showFuelFilterWindow = false;
+            }
+
+            // 全局悬浮提示（在所有窗口外部渲染，使用 Event.current.mousePosition 避免 UI 缩放偏移）
+            if (Event.current.type == EventType.Repaint && !string.IsNullOrEmpty(GUI.tooltip))
+            {
+                Vector2 mousePos = Event.current.mousePosition;
+                GUIContent tipContent = new GUIContent(GUI.tooltip);
+                Vector2 tipSize = GUI.skin.box.CalcSize(tipContent);
+                float tipX = mousePos.x + 15f;
+                float tipY = mousePos.y + 15f;
+                if (tipX + tipSize.x + 10f > Screen.width) tipX = Screen.width - tipSize.x - 20f;
+                if (tipY + tipSize.y + 5f > Screen.height) tipY = mousePos.y - tipSize.y - 10f;
+                Rect tipRect = new Rect(tipX, tipY, tipSize.x + 10f, tipSize.y + 5f);
+                GUI.backgroundColor = new Color(0f, 0f, 0f, 0.88f);
+                GUI.Box(tipRect, GUI.tooltip);
+                GUI.backgroundColor = Color.white;
+                GUI.tooltip = "";
+            }
         }
 
         private void DrawWindow(int id)
@@ -1618,6 +1727,21 @@ namespace KSP_EngineAnalyzer
             if (GUILayout.Button(isVacMode ? L("#engineAnalyzer_VacuumMode") : L("#engineAnalyzer_SeaLevelMode"))) { isVacMode = !isVacMode; RefreshData(); }
             if (GUILayout.Button(isSmartMode ? L("#engineAnalyzer_ReverseMode") : L("#engineAnalyzer_NormalMode"))) { isSmartMode = !isSmartMode; RefreshData(); }
             if (GUILayout.Button(isCompactMode ? L("#engineAnalyzer_CompactMode") : L("#engineAnalyzer_NormalLayout"))) { isCompactMode = !isCompactMode; windowRect.width = isCompactMode ? 450f : 850f; windowRect.height = 680f; if (showDetailPanel) { detailWindowRect.width = isCompactMode ? 450f : 850f; detailWindowRect.height = isCompactMode ? 800f : 950f; } }
+
+            // 燃料筛选按钮
+            int activeFuelFilters = fuelCategories.Count(fc => fc.isSelected);
+            string fuelBtnLabel = activeFuelFilters > 0 ? $"⛽ {L("#engineAnalyzer_FuelFilter")} ({activeFuelFilters})" : $"⛽ {L("#engineAnalyzer_FuelFilter")}";
+            string fuelBtnTooltip = activeFuelFilters > 0
+                ? L("#engineAnalyzer_FuelFilterActiveTip") + " " + string.Join(", ", fuelCategories.Where(fc => fc.isSelected).Select(fc => fc.name))
+                : L("#engineAnalyzer_FuelFilterTip");
+            GUIContent fuelBtnContent = new GUIContent(fuelBtnLabel, fuelBtnTooltip);
+            if (GUILayout.Button(fuelBtnContent, GUILayout.Height(25)))
+            {
+                showFuelFilterWindow = !showFuelFilterWindow;
+                fuelFilterScroll = Vector2.zero;
+                fuelFilterWindowRect.x = windowRect.x + windowRect.width + 10f;
+                fuelFilterWindowRect.y = windowRect.y;
+            }
             GUILayout.EndHorizontal();
 
             try
@@ -1703,13 +1827,13 @@ namespace KSP_EngineAnalyzer
             GUILayout.Space(10);
             bool or = GUILayout.Toggle(onlyResearched, researchedContent, GUILayout.Width(AutoToggleWidthWide(researchedLabel)));
             GUILayout.Space(20f);
-            string noDepLabelRow = L("#engineAnalyzer_NoDep");
-            string onlyROLabelRow = L("#engineAnalyzer_OnlyRO");
-            GUIContent noDepContent = new GUIContent(noDepLabelRow, L("#engineAnalyzer_NoDepTooltip"));
-            GUIContent onlyRoContent = new GUIContent(onlyROLabelRow, L("#engineAnalyzer_OnlyRoTooltip"));
-            fd = GUILayout.Toggle(filterDeprecated, noDepContent, GUILayout.Width(AutoToggleWidthWide(noDepLabelRow)));
+            string noDepLabelRow = L("#engineAnalyzer_NoDep", "No Dep");
+            string onlyROLabelRow = L("#engineAnalyzer_OnlyRO", "Only RO");
+            GUIContent noDepContent = new GUIContent(noDepLabelRow, L("#engineAnalyzer_NoDepTooltip", "Hide or show deprecated engine parts"));
+            GUIContent onlyRoContent = new GUIContent(onlyROLabelRow, L("#engineAnalyzer_OnlyRoTooltip", "Hide or show non-RO (Realism Overhaul) compatible parts"));
+            fd = GUILayout.Toggle(filterDeprecated, noDepContent, GUILayout.Width(85));
             GUILayout.Space(5f);
-            fn = GUILayout.Toggle(filterNonRO, onlyRoContent, GUILayout.Width(AutoToggleWidthWide(onlyROLabelRow)));
+            fn = GUILayout.Toggle(filterNonRO, onlyRoContent, GUILayout.Width(85));
             GUILayout.FlexibleSpace();
             GUILayout.EndHorizontal();
 
@@ -1858,6 +1982,8 @@ namespace KSP_EngineAnalyzer
             }
             GUILayout.EndHorizontal();
             GUILayout.EndVertical();
+
+            // ── 通用鼠标悬停 Tooltip 框渲染器 ──
             if (Event.current.type == EventType.Repaint && !string.IsNullOrEmpty(GUI.tooltip))
             {
                 Vector2 mousePos = Event.current.mousePosition;
@@ -1868,7 +1994,9 @@ namespace KSP_EngineAnalyzer
                 GUI.backgroundColor = new Color(0f, 0f, 0f, 0.85f);
                 GUI.Box(tooltipRect, GUI.tooltip);
                 GUI.backgroundColor = Color.white;
+                GUI.tooltip = "";
             }
+
             GUI.DragWindow();
         }
 
@@ -1902,6 +2030,60 @@ namespace KSP_EngineAnalyzer
             }
 
             GUILayout.EndScrollView();
+            GUILayout.EndVertical();
+            GUI.DragWindow();
+        }
+
+        private void DrawFuelFilter(int windowID)
+        {
+            try { InitFuelCategories(); } catch { }
+
+            float winWidth = 320f;
+            GUILayout.BeginVertical(GUILayout.Width(winWidth));
+
+            GUILayout.Label($"<b>{L("#engineAnalyzer_FuelFilterDesc")}</b>");
+            GUILayout.Space(5f);
+
+            // 严格/宽松模式切换
+            GUILayout.BeginHorizontal();
+            string strictLabel = isFuelFilterStrict ? "\U0001F512 " + L("#engineAnalyzer_FuelFilterStrict") : "\U0001F513 " + L("#engineAnalyzer_FuelFilterLoose");
+            string strictTooltip = isFuelFilterStrict ? L("#engineAnalyzer_FuelFilterStrictTip") : L("#engineAnalyzer_FuelFilterLooseTip");
+            GUIContent strictContent = new GUIContent(strictLabel, strictTooltip);
+            if (GUILayout.Button(strictContent, GUILayout.Height(28)))
+            {
+                isFuelFilterStrict = !isFuelFilterStrict;
+                ApplyFilters();
+            }
+            GUILayout.FlexibleSpace();
+            GUILayout.EndHorizontal();
+
+            GUILayout.Space(5f);
+
+            // 燃料分类列表
+            fuelFilterScroll = GUILayout.BeginScrollView(fuelFilterScroll, GUILayout.Width(winWidth - 20), GUILayout.Height(320));
+
+            foreach (var fc in fuelCategories)
+            {
+                bool prev = fc.isSelected;
+                GUIContent toggleContent = new GUIContent(fc.name, fc.tooltip);
+                fc.isSelected = GUILayout.Toggle(fc.isSelected, toggleContent);
+                if (fc.isSelected != prev)
+                    ApplyFilters();
+            }
+
+            GUILayout.EndScrollView();
+
+            GUILayout.Space(5f);
+
+            // 重置按钮
+            GUIContent resetContent = new GUIContent(L("#engineAnalyzer_FuelFilterReset"), L("#engineAnalyzer_FuelFilterResetTip"));
+            if (GUILayout.Button(resetContent, GUILayout.Height(25)))
+            {
+                foreach (var fc in fuelCategories)
+                    fc.isSelected = false;
+                ApplyFilters();
+            }
+
             GUILayout.EndVertical();
             GUI.DragWindow();
         }
@@ -2575,6 +2757,7 @@ namespace KSP_EngineAnalyzer
     {
         public AvailablePart part; public string partTitle; public bool isJet, isSRB, isSurface;
         public List<EngineConfig> configs = new List<EngineConfig>();
+        public HashSet<string> propellantNames = new HashSet<string>();
         public float MinPrice => configs.Count > 0 ? configs.Min(c => c.price) : 0;
         public float MinVolume => configs.Count > 0 ? configs.Min(c => c.displayVolume) : 0;
         public float MaxDeltaV => configs.Count > 0 ? configs.Max(c => c.deltaV) : 0;
